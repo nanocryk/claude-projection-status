@@ -42,6 +42,30 @@ def rate_per_hour(
     return max(0.0, rate)  # negative means window reset, ignore
 
 
+def rate_per_day(
+    samples: list[tuple[float, float]],
+) -> Optional[float]:
+    """Compute current usage rate as %/day from recent samples.
+
+    Uses last 24 hours of data for a stable reading.
+    """
+    if len(samples) < 2:
+        return None
+
+    now = samples[-1][0]
+    cutoff = now - 86400  # last 24h
+    recent = [(t, p) for t, p in samples if t >= cutoff]
+    if len(recent) < 2:
+        return None
+
+    delta_pct = recent[-1][1] - recent[0][1]
+    delta_days = (recent[-1][0] - recent[0][0]) / 86400
+    if delta_days < 0.01:  # ~15 min minimum
+        return None
+    rate = delta_pct / delta_days
+    return max(0.0, rate)
+
+
 def current_session_rate(
     samples: list[tuple[float, float]],
 ) -> Optional[float]:

@@ -17,13 +17,13 @@ from .projection import (
     current_session_rate,
     historical_median_rate,
     project_end_of_window,
+    rate_per_day,
     rate_per_hour,
     smooth_projection,
     time_to_threshold,
 )
 from .render import render_status_line
 from .storage import (
-    get_daily_7d_deltas,
     get_historical_rates,
     get_hourly_activity_profile,
     get_window_samples,
@@ -174,15 +174,6 @@ def main() -> None:
     ctx_pct = cw.get("used_percentage") if cw else None
     ctx_size = cw.get("context_window_size", 0) if cw else 0
 
-    # Session duration
-    cost = data.get("cost", {})
-    duration_ms = cost.get("total_duration_ms", 0) if cost else 0
-    session_duration: Optional[str] = None
-    if duration_ms > 0:
-        total_min = duration_ms // 60000
-        h, m = total_min // 60, total_min % 60
-        session_duration = f"{h}h{m:02d}m" if h > 0 else f"{m}m"
-
     # Record samples & compute projections
     proj_5h: Optional[float] = None
     proj_7d: Optional[float] = None
@@ -193,8 +184,8 @@ def main() -> None:
     conf_5h: Optional[str] = None
     conf_7d: Optional[str] = None
     rate_5h_ph: Optional[float] = None
-    proj_eta: Optional[str] = None  # "projection in ~Xm"
-    budget_pacing: Optional[str] = None  # daily 7d budget pacing
+    rate_7d_pd: Optional[float] = None
+    proj_eta: Optional[str] = None
     peak_hour: bool = False
 
     try:
@@ -267,22 +258,9 @@ def main() -> None:
         if pct_7d is not None and resets_7d is not None:
             proj_7d, t100_7d, trend_7d, conf_7d = _compute_projection("7d", pct_7d, resets_7d)
 
-        # Daily budget pacing for 7d window
-        if pct_7d is not None:
-            daily_deltas = get_daily_7d_deltas(db)
-            if daily_deltas:
-                import statistics
-                avg_daily = statistics.mean(daily_deltas)
-                # Ideal daily budget = (100 - current%) / days_remaining
-                if resets_7d is not None:
-                    days_left = max(1, (resets_7d - time.time()) / 86400)
-                    ideal_daily = (100 - pct_7d) / days_left
-                    if avg_daily > ideal_daily * 1.3:
-                        budget_pacing = "over"
-                    elif avg_daily < ideal_daily * 0.7:
-                        budget_pacing = "under"
-                    else:
-                        budget_pacing = "on-track"
+            # %/day rate for 7d window
+            samples_7d = get_window_samples(db, "7d", resets_7d)
+            rate_7d_pd = rate_per_day(samples_7d)
 
         # Peak hour detection
         current_hour = datetime.now(timezone.utc).hour
@@ -310,8 +288,7 @@ def main() -> None:
         conf_5h=conf_5h,
         conf_7d=conf_7d,
         rate_per_h=rate_5h_ph,
-        session_duration=session_duration,
+        rate_per_d=rate_7d_pd,
         proj_eta=proj_eta,
-        budget_pacing=budget_pacing,
         peak_hour=peak_hour,
     ))

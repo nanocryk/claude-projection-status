@@ -122,11 +122,12 @@ def _format_window(
     time_to_100: Optional[str],
     trend: Optional[str] = None,
     confidence: Optional[str] = None,
+    rate_str: str = "",
 ) -> str:
     if pct is None:
         if COMPACT:
             return f"{DIM}{label}:--{RESET}"
-        return f"{DIM}{label}: --% [--]{RESET}"
+        return f"{DIM}[--] {label}: --%{RESET}"
 
     if COMPACT:
         parts = [f"{DIM}{label}:{RESET}{_colored_pct(pct)}"]
@@ -138,9 +139,9 @@ def _format_window(
             parts.append(f"{DIM}\u2192{RESET}{proj_color}{proj_str}{RESET}")
         return "".join(parts)
 
-    # Full mode
+    # Full mode: [cooldown] label:[bar]pct% ~>proj trend rate !time
     bar = _build_two_tone_bar(pct, projected)
-    parts = [f"{DIM}{label}:{RESET}{bar}{_colored_pct(pct)}"]
+    parts = [f"{DIM}[{cooldown}]{RESET} {DIM}{label}:{RESET}{bar}{_colored_pct(pct)}"]
 
     if projected is not None:
         proj_color = _color_for_pct(projected)
@@ -154,15 +155,16 @@ def _format_window(
     if arrow:
         parts.append(arrow)
 
-    parts.append(f"{DIM}[{cooldown}]{RESET}")
+    if rate_str:
+        parts.append(rate_str)
 
     if time_to_100:
-        parts.append(f"{BOLD}{RED}!100%~{time_to_100}{RESET}")
+        parts.append(f"{BOLD}{RED}!{time_to_100}{RESET}")
 
     return " ".join(parts)
 
 
-def _format_rate(rate: Optional[float]) -> str:
+def _format_rate_h(rate: Optional[float]) -> str:
     """Format %/h rate."""
     if rate is None:
         return ""
@@ -172,14 +174,14 @@ def _format_rate(rate: Optional[float]) -> str:
     return f"{color}{rate:.0f}%/h{RESET}"
 
 
-def _format_budget_pacing(pacing: Optional[str]) -> str:
-    if pacing == "over":
-        return f"{YELLOW}budget:over{RESET}"
-    if pacing == "under":
-        return f"{GREEN}budget:ok{RESET}"
-    if pacing == "on-track":
-        return f"{GREEN}budget:ok{RESET}"
-    return ""
+def _format_rate_d(rate: Optional[float]) -> str:
+    """Format %/d rate."""
+    if rate is None:
+        return ""
+    if rate < 1:
+        return f"{DIM}{rate:.1f}%/d{RESET}"
+    color = GREEN if rate < 10 else (YELLOW if rate < 20 else RED)
+    return f"{color}{rate:.0f}%/d{RESET}"
 
 
 def render_status_line(
@@ -200,13 +202,14 @@ def render_status_line(
     conf_5h: Optional[str] = None,
     conf_7d: Optional[str] = None,
     rate_per_h: Optional[float] = None,
-    session_duration: Optional[str] = None,
+    rate_per_d: Optional[float] = None,
     proj_eta: Optional[str] = None,
-    budget_pacing: Optional[str] = None,
     peak_hour: bool = False,
 ) -> str:
-    seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h, trend_5h, conf_5h)
-    seg_7d = _format_window("7d", pct_7d, proj_7d, cooldown_7d, time_to_100_7d, trend_7d, conf_7d)
+    seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h,
+                             trend_5h, conf_5h, _format_rate_h(rate_per_h))
+    seg_7d = _format_window("7d", pct_7d, proj_7d, cooldown_7d, time_to_100_7d,
+                             trend_7d, conf_7d, _format_rate_d(rate_per_d))
 
     # Model segment with context
     model_clean = re.sub(r"\s*\([^)]*context[^)]*\)", "", model)
@@ -220,26 +223,11 @@ def render_status_line(
 
     parts = [seg_5h, seg_7d]
 
-    # Rate + projection ETA (appended to 5h segment area)
-    rate_str = _format_rate(rate_per_h)
-    if rate_str:
-        parts.append(rate_str)
-
     if proj_eta and proj_5h is None:
         parts.append(f"{DIM}proj~{proj_eta}{RESET}")
 
     parts.append(f"{DIM}{model_seg}{RESET}")
 
-    # Session duration
-    if session_duration:
-        parts.append(f"{DIM}{session_duration}{RESET}")
-
-    # Budget pacing for 7d
-    bp = _format_budget_pacing(budget_pacing)
-    if bp:
-        parts.append(bp)
-
-    # Peak hour indicator
     if peak_hour:
         parts.append(f"{YELLOW}peak-h{RESET}")
 

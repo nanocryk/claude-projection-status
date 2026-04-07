@@ -37,18 +37,18 @@ class TestStorage(unittest.TestCase):
         self.assertEqual(rows, 2)
 
     def test_get_window_samples(self):
-        # Insert with manual timestamps 10s apart to land in different 5s buckets
+        # Insert with manual timestamps 60s apart to land in different 30s buckets
         import time
         now = time.time()
         self.conn.execute(
             "INSERT INTO usage_samples (timestamp, window_type, used_pct, resets_at, session_id) VALUES (?,?,?,?,?)",
-            (now - 10, "5h", 10.0, 1000.0, "s1"))
+            (now - 60, "5h", 10.0, 1000.0, "s1"))
         self.conn.execute(
             "INSERT INTO usage_samples (timestamp, window_type, used_pct, resets_at, session_id) VALUES (?,?,?,?,?)",
             (now, "5h", 15.0, 1000.0, "s1"))
         self.conn.execute(
             "INSERT INTO usage_samples (timestamp, window_type, used_pct, resets_at, session_id) VALUES (?,?,?,?,?)",
-            (now + 10, "5h", 20.0, 2000.0, "s1"))
+            (now + 60, "5h", 20.0, 2000.0, "s1"))
         self.conn.commit()
         samples = storage.get_window_samples(self.conn, "5h", 1000.0)
         self.assertEqual(len(samples), 2)

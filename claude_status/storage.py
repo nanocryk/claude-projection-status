@@ -119,10 +119,10 @@ def get_window_samples(
     """Return [(timestamp, used_pct)] for current window.
 
     When multiple sessions report for the same window, we take the MAX pct
-    per timestamp bucket (5-second buckets) to avoid interleaving artifacts.
+    per timestamp bucket (30-second buckets) to merge concurrent session reports.
     """
     rows = conn.execute(
-        "SELECT CAST(timestamp/5 AS INTEGER)*5 as ts_bucket, MAX(used_pct) "
+        "SELECT CAST(timestamp/30 AS INTEGER)*30 as ts_bucket, MAX(used_pct) "
         "FROM usage_samples "
         "WHERE window_type = ? AND resets_at = ? "
         "GROUP BY ts_bucket ORDER BY ts_bucket",

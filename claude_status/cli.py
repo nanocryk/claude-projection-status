@@ -203,8 +203,6 @@ def main() -> None:
 
         weekday = datetime.now(timezone.utc).weekday()
         hourly_profile = get_hourly_activity_profile(db, current_weekday=weekday)
-        hist_rates = get_historical_rates(db)
-        hist_rate = historical_median_rate(hist_rates)
 
         def _has_enough_data(samples: list) -> bool:
             return (
@@ -215,6 +213,7 @@ def main() -> None:
         def _compute_projection(
             wtype: str, pct: float, resets: float,
         ) -> tuple[Optional[float], Optional[str], Optional[str], Optional[str]]:
+            hist_rate = historical_median_rate(get_historical_rates(db, wtype))
             samples = get_window_samples(db, wtype, resets)
             trend = compute_trend(samples)
             if not _has_enough_data(samples):

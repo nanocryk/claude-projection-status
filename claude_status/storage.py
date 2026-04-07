@@ -215,16 +215,31 @@ def is_peak_hour(
 
 def get_historical_rates(
     conn: sqlite3.Connection,
+    window_type: Optional[str] = None,
 ) -> list[float]:
-    """Return list of %/minute rates from past windows (one per window)."""
-    # Group samples by (window_type, resets_at) to find distinct windows
-    windows = conn.execute(
-        "SELECT window_type, resets_at, MIN(timestamp), MAX(timestamp), "
-        "MIN(used_pct), MAX(used_pct) "
-        "FROM usage_samples "
-        "GROUP BY window_type, resets_at "
-        "HAVING MAX(used_pct) > MIN(used_pct) AND MAX(timestamp) > MIN(timestamp)",
-    ).fetchall()
+    """Return list of %/minute rates from past windows (one per window).
+
+    When window_type is given, only return rates for that window type.
+    This prevents 5h rates from contaminating 7d projections.
+    """
+    if window_type:
+        windows = conn.execute(
+            "SELECT window_type, resets_at, MIN(timestamp), MAX(timestamp), "
+            "MIN(used_pct), MAX(used_pct) "
+            "FROM usage_samples "
+            "WHERE window_type = ? "
+            "GROUP BY window_type, resets_at "
+            "HAVING MAX(used_pct) > MIN(used_pct) AND MAX(timestamp) > MIN(timestamp)",
+            (window_type,),
+        ).fetchall()
+    else:
+        windows = conn.execute(
+            "SELECT window_type, resets_at, MIN(timestamp), MAX(timestamp), "
+            "MIN(used_pct), MAX(used_pct) "
+            "FROM usage_samples "
+            "GROUP BY window_type, resets_at "
+            "HAVING MAX(used_pct) > MIN(used_pct) AND MAX(timestamp) > MIN(timestamp)",
+        ).fetchall()
 
     rates = []
     for _, _, t_min, t_max, pct_min, pct_max in windows:

@@ -1,0 +1,13 @@
+[project]
+name = "claude-status"
+version = "0.1.0"
+description = "Custom Claude Code status bar with usage projection"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+claude-status = "claude_status.cli:main"
+
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"

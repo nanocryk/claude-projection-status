@@ -116,10 +116,16 @@ def get_window_samples(
     window_type: str,
     resets_at: float,
 ) -> list[tuple[float, float]]:
-    """Return [(timestamp, used_pct)] for current window."""
+    """Return [(timestamp, used_pct)] for current window.
+
+    When multiple sessions report for the same window, we take the MAX pct
+    per timestamp bucket (5-second buckets) to avoid interleaving artifacts.
+    """
     rows = conn.execute(
-        "SELECT timestamp, used_pct FROM usage_samples "
-        "WHERE window_type = ? AND resets_at = ? ORDER BY timestamp",
+        "SELECT CAST(timestamp/5 AS INTEGER)*5 as ts_bucket, MAX(used_pct) "
+        "FROM usage_samples "
+        "WHERE window_type = ? AND resets_at = ? "
+        "GROUP BY ts_bucket ORDER BY ts_bucket",
         (window_type, resets_at),
     ).fetchall()
     return rows
@@ -159,6 +165,52 @@ def get_hourly_activity_profile(
         t = hour_total[hour]
         profile[hour] = hour_active.get(hour, 0.0) / t if t > 0 else 0.0
     return profile
+
+
+def get_daily_7d_deltas(
+    conn: sqlite3.Connection,
+) -> list[float]:
+    """Return list of daily 7d-window % increases from history.
+
+    Used for daily budget pacing: what's the typical daily consumption
+    of the 7d window?
+    """
+    # For each day, find the max-min of 7d pct within that day
+    rows = conn.execute(
+        "SELECT date(timestamp, 'unixepoch') as day, MAX(used_pct) - MIN(used_pct) as delta "
+        "FROM usage_samples "
+        "WHERE window_type = '7d' "
+        "GROUP BY day "
+        "HAVING delta > 0",
+    ).fetchall()
+    return [r[1] for r in rows]
+
+
+def is_peak_hour(
+    conn: sqlite3.Connection,
+    hour: int,
+    current_weekday: Optional[int] = None,
+) -> bool:
+    """Return True if this hour is historically a high-activity hour.
+
+    Peak = activity probability > 0.7 AND above-average delta.
+    """
+    profile = get_hourly_activity_profile(conn, current_weekday)
+    prob = profile.get(hour, 0.0)
+    if prob < 0.7:
+        return False
+
+    # Check if this hour's average delta is above the overall average
+    rows = conn.execute(
+        "SELECT hour, AVG(total_delta_pct) as avg_delta "
+        "FROM active_hours WHERE total_delta_pct > 0 GROUP BY hour",
+    ).fetchall()
+    if not rows:
+        return False
+
+    hour_deltas = {r[0]: r[1] for r in rows}
+    overall_avg = sum(hour_deltas.values()) / len(hour_deltas)
+    return hour_deltas.get(hour, 0.0) > overall_avg * 1.2
 
 
 def get_historical_rates(

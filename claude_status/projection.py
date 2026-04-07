@@ -18,6 +18,30 @@ from typing import Optional
 from .config import CACHE_DIR
 
 
+def rate_per_hour(
+    samples: list[tuple[float, float]],
+) -> Optional[float]:
+    """Compute current usage rate as %/hour from recent samples.
+
+    Uses last 30 minutes of data for a stable reading.
+    """
+    if len(samples) < 2:
+        return None
+
+    now = samples[-1][0]
+    cutoff = now - 1800  # last 30 min
+    recent = [(t, p) for t, p in samples if t >= cutoff]
+    if len(recent) < 2:
+        return None
+
+    delta_pct = recent[-1][1] - recent[0][1]
+    delta_hours = (recent[-1][0] - recent[0][0]) / 3600
+    if delta_hours < 0.02:  # ~1 min minimum
+        return None
+    rate = delta_pct / delta_hours
+    return max(0.0, rate)  # negative means window reset, ignore
+
+
 def current_session_rate(
     samples: list[tuple[float, float]],
 ) -> Optional[float]:

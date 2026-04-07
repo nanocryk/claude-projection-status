@@ -162,6 +162,26 @@ def _format_window(
     return " ".join(parts)
 
 
+def _format_rate(rate: Optional[float]) -> str:
+    """Format %/h rate."""
+    if rate is None:
+        return ""
+    if rate < 0.5:
+        return f"{DIM}{rate:.1f}%/h{RESET}"
+    color = GREEN if rate < 15 else (YELLOW if rate < 30 else RED)
+    return f"{color}{rate:.0f}%/h{RESET}"
+
+
+def _format_budget_pacing(pacing: Optional[str]) -> str:
+    if pacing == "over":
+        return f"{YELLOW}budget:over{RESET}"
+    if pacing == "under":
+        return f"{GREEN}budget:ok{RESET}"
+    if pacing == "on-track":
+        return f"{GREEN}budget:ok{RESET}"
+    return ""
+
+
 def render_status_line(
     pct_5h: Optional[float],
     pct_7d: Optional[float],
@@ -179,6 +199,11 @@ def render_status_line(
     trend_7d: Optional[str] = None,
     conf_5h: Optional[str] = None,
     conf_7d: Optional[str] = None,
+    rate_per_h: Optional[float] = None,
+    session_duration: Optional[str] = None,
+    proj_eta: Optional[str] = None,
+    budget_pacing: Optional[str] = None,
+    peak_hour: bool = False,
 ) -> str:
     seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h, trend_5h, conf_5h)
     seg_7d = _format_window("7d", pct_7d, proj_7d, cooldown_7d, time_to_100_7d, trend_7d, conf_7d)
@@ -193,7 +218,30 @@ def render_status_line(
     if COMPACT:
         return f"{seg_5h} {seg_7d} {DIM}{model_clean}{RESET}"
 
-    parts = [seg_5h, seg_7d, f"{DIM}{model_seg}{RESET}"]
+    parts = [seg_5h, seg_7d]
+
+    # Rate + projection ETA (appended to 5h segment area)
+    rate_str = _format_rate(rate_per_h)
+    if rate_str:
+        parts.append(rate_str)
+
+    if proj_eta and proj_5h is None:
+        parts.append(f"{DIM}proj~{proj_eta}{RESET}")
+
+    parts.append(f"{DIM}{model_seg}{RESET}")
+
+    # Session duration
+    if session_duration:
+        parts.append(f"{DIM}{session_duration}{RESET}")
+
+    # Budget pacing for 7d
+    bp = _format_budget_pacing(budget_pacing)
+    if bp:
+        parts.append(bp)
+
+    # Peak hour indicator
+    if peak_hour:
+        parts.append(f"{YELLOW}peak-h{RESET}")
 
     if bypass:
         parts.append(f"{BOLD}{RED}[BYPASS]{RESET}")

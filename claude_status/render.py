@@ -196,7 +196,8 @@ def render_status_line(
     model: str,
     ctx_pct: Optional[float],
     ctx_size: int,
-    bypass: bool,
+    cache_pct: Optional[float] = None,
+    bypass: bool = False,
     trend_5h: Optional[str] = None,
     trend_7d: Optional[str] = None,
     conf_5h: Optional[str] = None,
@@ -211,10 +212,19 @@ def render_status_line(
     seg_7d = _format_window("7d", pct_7d, proj_7d, cooldown_7d, time_to_100_7d,
                              trend_7d, conf_7d, _format_rate_d(rate_per_d))
 
-    # Model segment with context
+    # Model segment with context + cache hit
     model_clean = re.sub(r"\s*\([^)]*context[^)]*\)", "", model)
+    info_parts: list[str] = []
     if ctx_pct is not None and ctx_size > 0:
-        model_seg = f"{model_clean} ({ctx_pct:.0f}%ctx)"
+        # ctx: green <50%, yellow <80%, red >=80%
+        cc = GREEN if ctx_pct < 50 else (YELLOW if ctx_pct < 80 else RED)
+        info_parts.append(f"{cc}{ctx_pct:.0f}%ctx{RESET}")
+    if cache_pct is not None:
+        # hit: green >=80%, yellow >=50%, red <50%
+        hc = GREEN if cache_pct >= 80 else (YELLOW if cache_pct >= 50 else RED)
+        info_parts.append(f"{hc}{cache_pct:.0f}%hit{RESET}")
+    if info_parts:
+        model_seg = f"{model_clean} ({' '.join(info_parts)})"
     else:
         model_seg = model_clean
 

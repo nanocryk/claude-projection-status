@@ -174,6 +174,16 @@ def main() -> None:
     ctx_pct = cw.get("used_percentage") if cw else None
     ctx_size = cw.get("context_window_size", 0) if cw else 0
 
+    # Cache efficiency
+    cache_pct: Optional[float] = None
+    cu = cw.get("current_usage", {}) if cw else {}
+    if cu:
+        cache_read = cu.get("cache_read_input_tokens", 0)
+        input_tok = cu.get("input_tokens", 0)
+        total = cache_read + input_tok
+        if total > 0:
+            cache_pct = cache_read / total * 100
+
     # Record samples & compute projections
     proj_5h: Optional[float] = None
     proj_7d: Optional[float] = None
@@ -281,6 +291,7 @@ def main() -> None:
         model=model_name,
         ctx_pct=ctx_pct,
         ctx_size=ctx_size,
+        cache_pct=cache_pct,
         bypass=_is_bypass(),
         trend_5h=trend_5h,
         trend_7d=trend_7d,

@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from .config import MIN_SAMPLES_FOR_PROJECTION
+from .config import MIN_SAMPLES_FOR_PROJECTION, MIN_TIMESPAN_FOR_PROJECTION
 from .projection import (
     current_session_rate,
     historical_median_rate,
@@ -129,10 +129,16 @@ def main() -> None:
         hist_rates = get_historical_rates(db)
         hist_rate = historical_median_rate(hist_rates)
 
+        def _has_enough_data(samples: list) -> bool:
+            return (
+                len(samples) >= MIN_SAMPLES_FOR_PROJECTION
+                and samples[-1][0] - samples[0][0] >= MIN_TIMESPAN_FOR_PROJECTION
+            )
+
         # 5h projection
         if pct_5h is not None and resets_5h is not None:
             samples_5h = get_window_samples(db, "5h", resets_5h)
-            if len(samples_5h) >= MIN_SAMPLES_FOR_PROJECTION:
+            if _has_enough_data(samples_5h):
                 rate_5h = current_session_rate(samples_5h)
                 proj_5h = project_end_of_window(
                     pct_5h, resets_5h, rate_5h, hourly_profile, hist_rate,
@@ -145,7 +151,7 @@ def main() -> None:
         # 7d projection
         if pct_7d is not None and resets_7d is not None:
             samples_7d = get_window_samples(db, "7d", resets_7d)
-            if len(samples_7d) >= MIN_SAMPLES_FOR_PROJECTION:
+            if _has_enough_data(samples_7d):
                 rate_7d = current_session_rate(samples_7d)
                 proj_7d = project_end_of_window(
                     pct_7d, resets_7d, rate_7d, hourly_profile, hist_rate,

@@ -13,6 +13,10 @@ RETENTION_DAYS = 14
 # Minimum samples in current window before showing projection
 MIN_SAMPLES_FOR_PROJECTION = 5
 
+# Minimum time span (seconds) between first and last sample before projecting
+# Prevents wild projections from short bursts
+MIN_TIMESPAN_FOR_PROJECTION = 15 * 60  # 15 minutes
+
 # ANSI codes
 GREEN = "\033[32m"
 YELLOW = "\033[33m"

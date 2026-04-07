@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import random
 import sys
 import time
 from datetime import datetime, timezone
@@ -16,7 +17,9 @@ from .projection import (
     compute_trend,
     current_session_rate,
     historical_median_rate,
+    overall_rate,
     project_end_of_window,
+    project_linear,
     rate_per_day,
     rate_per_hour,
     smooth_projection,
@@ -88,9 +91,6 @@ def _is_bypass() -> bool:
 
 def _print_summary() -> None:
     """Print usage statistics from the database."""
-    from .storage import open_db, get_hourly_activity_profile, get_historical_rates
-    from .projection import historical_median_rate
-
     db = open_db()
 
     # Total samples
@@ -207,7 +207,6 @@ def main() -> None:
             record_sample(db, "7d", pct_7d, resets_7d, session_id)
 
         # Prune occasionally (roughly every 100th call)
-        import random
         if random.randint(0, 99) == 0:
             prune_old(db)
 
@@ -220,56 +219,74 @@ def main() -> None:
                 and samples[-1][0] - samples[0][0] >= MIN_TIMESPAN_FOR_PROJECTION
             )
 
-        def _compute_projection(
-            wtype: str, pct: float, resets: float,
-        ) -> tuple[Optional[float], Optional[str], Optional[str], Optional[str]]:
-            hist_rate = historical_median_rate(get_historical_rates(db, wtype))
-            samples = get_window_samples(db, wtype, resets)
-            trend = compute_trend(samples)
-            if not _has_enough_data(samples):
-                log.debug("%s: %d samples, span=%.0fs — not enough",
-                          wtype, len(samples),
-                          (samples[-1][0] - samples[0][0]) if len(samples) >= 2 else 0)
-                return None, None, trend, None
-            rate = current_session_rate(samples)
-            raw_proj = project_end_of_window(pct, resets, rate, hourly_profile, hist_rate)
-            if raw_proj is None:
-                return None, None, trend, None
-
-            proj = smooth_projection(wtype, raw_proj)
-
+        def _smooth_and_conf(wtype, samples):
+            """Shared: smooth projection + compute confidence."""
             timespan = samples[-1][0] - samples[0][0] if len(samples) >= 2 else 0
-            conf = compute_confidence(
-                len(samples), timespan, hist_rate is not None, len(hourly_profile),
+            return compute_confidence(
+                len(samples), timespan,
+                bool(get_historical_rates(db, wtype)), len(hourly_profile),
             )
-            log.debug("%s: rate=%.4f%%/min proj=%.1f%%(raw=%.1f) trend=%s conf=%s samples=%d",
-                      wtype, rate or 0, proj, raw_proj, trend, conf, len(samples))
-            t100 = None
-            if proj > 80:
-                t100 = time_to_threshold(pct, resets, rate, hourly_profile, hist_rate)
-            return proj, t100, trend, conf
 
+        def _time_to_100(pct, resets, rate_per_min):
+            """Estimate time to 100% using linear rate."""
+            if rate_per_min is None or rate_per_min <= 0:
+                return None
+            remaining_pct = 100 - pct
+            mins = remaining_pct / rate_per_min
+            if mins * 60 > (resets - time.time()):
+                return None  # won't hit before reset
+            total_min = int(mins)
+            if total_min < 1:
+                return "<1m"
+            if total_min >= 1440:  # 24h+
+                d = total_min // 1440
+                h = (total_min % 1440) // 60
+                return f"{d}d{h:02d}h"
+            if total_min >= 60:
+                return f"{total_min // 60}h{total_min % 60:02d}m"
+            return f"{total_min}m"
+
+        # 5h: active-rate projection with hourly activity profile
         if pct_5h is not None and resets_5h is not None:
-            proj_5h, t100_5h, trend_5h, conf_5h = _compute_projection("5h", pct_5h, resets_5h)
-
-            # %/h rate
             samples_5h = get_window_samples(db, "5h", resets_5h)
+            trend_5h = compute_trend(samples_5h)
             rate_5h_ph = rate_per_hour(samples_5h)
 
-            # Projection ETA: how long until we have enough data
+            if _has_enough_data(samples_5h):
+                hist_rate = historical_median_rate(get_historical_rates(db, "5h"))
+                rate = current_session_rate(samples_5h)
+                raw = project_end_of_window(pct_5h, resets_5h, rate, hourly_profile, hist_rate)
+                if raw is not None:
+                    proj_5h = smooth_projection("5h", raw)
+                    conf_5h = _smooth_and_conf("5h", samples_5h)
+                    if proj_5h > 80:
+                        t100_5h = _time_to_100(pct_5h, resets_5h, rate)
+                    log.debug("5h: rate=%.4f%%/min proj=%.1f%% conf=%s samples=%d",
+                              rate or 0, proj_5h, conf_5h, len(samples_5h))
+
+            # Projection ETA
             if proj_5h is None and len(samples_5h) >= 2:
                 span = samples_5h[-1][0] - samples_5h[0][0]
                 remaining_sec = max(0, MIN_TIMESPAN_FOR_PROJECTION - span)
                 if remaining_sec > 0:
-                    remaining_min = int(remaining_sec / 60) + 1
-                    proj_eta = f"{remaining_min}m"
+                    proj_eta = f"{int(remaining_sec / 60) + 1}m"
 
+        # 7d: simple linear projection (overall rate includes idle time)
         if pct_7d is not None and resets_7d is not None:
-            proj_7d, t100_7d, trend_7d, conf_7d = _compute_projection("7d", pct_7d, resets_7d)
-
-            # %/day rate for 7d window
             samples_7d = get_window_samples(db, "7d", resets_7d)
+            trend_7d = compute_trend(samples_7d)
             rate_7d_pd = rate_per_day(samples_7d)
+
+            if _has_enough_data(samples_7d):
+                rate_7d_min = overall_rate(samples_7d)
+                raw = project_linear(pct_7d, resets_7d, rate_7d_min)
+                if raw is not None:
+                    proj_7d = smooth_projection("7d", raw)
+                    conf_7d = _smooth_and_conf("7d", samples_7d)
+                    if proj_7d > 80:
+                        t100_7d = _time_to_100(pct_7d, resets_7d, rate_7d_min)
+                    log.debug("7d: rate=%.4f%%/min proj=%.1f%% conf=%s samples=%d",
+                              rate_7d_min or 0, proj_7d, conf_7d, len(samples_7d))
 
         # Peak hour detection
         current_hour = datetime.now(timezone.utc).hour

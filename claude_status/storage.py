@@ -167,24 +167,6 @@ def get_hourly_activity_profile(
     return profile
 
 
-def get_daily_7d_deltas(
-    conn: sqlite3.Connection,
-) -> list[float]:
-    """Return list of daily 7d-window % increases from history.
-
-    Used for daily budget pacing: what's the typical daily consumption
-    of the 7d window?
-    """
-    # For each day, find the max-min of 7d pct within that day
-    rows = conn.execute(
-        "SELECT date(timestamp, 'unixepoch') as day, MAX(used_pct) - MIN(used_pct) as delta "
-        "FROM usage_samples "
-        "WHERE window_type = '7d' "
-        "GROUP BY day "
-        "HAVING delta > 0",
-    ).fetchall()
-    return [r[1] for r in rows]
-
 
 def is_peak_hour(
     conn: sqlite3.Connection,

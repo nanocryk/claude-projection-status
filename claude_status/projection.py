@@ -66,6 +66,40 @@ def rate_per_day(
     return max(0.0, rate)
 
 
+def overall_rate(
+    samples: list[tuple[float, float]],
+) -> Optional[float]:
+    """Simple overall %/minute including idle time.
+
+    Better for long windows (7d) where idle time is normal and should
+    not be factored out.
+    """
+    if len(samples) < 2:
+        return None
+    delta_pct = samples[-1][1] - samples[0][1]
+    delta_min = (samples[-1][0] - samples[0][0]) / 60
+    if delta_min < 1:
+        return None
+    return max(0.0, delta_pct / delta_min)
+
+
+def project_linear(
+    current_pct: float,
+    resets_at: float,
+    rate: Optional[float],
+) -> Optional[float]:
+    """Simple linear projection: current + rate * remaining_minutes.
+
+    No hourly profile adjustment — the rate already includes idle patterns.
+    Better for long windows (7d).
+    """
+    if rate is None or rate <= 0:
+        return current_pct
+    now = time.time()
+    remaining_min = max(0, (resets_at - now) / 60)
+    return min(current_pct + rate * remaining_min, 110.0)
+
+
 def current_session_rate(
     samples: list[tuple[float, float]],
 ) -> Optional[float]:

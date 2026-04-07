@@ -79,5 +79,33 @@ class TestStorage(unittest.TestCase):
         self.assertIn("weekday", cols)
 
 
+    def test_is_peak_hour_no_data(self):
+        self.assertFalse(storage.is_peak_hour(self.conn, 14))
+
+    def test_get_historical_rates_filtered(self):
+        import time
+        now = time.time()
+        # Insert 5h and 7d samples with different rates
+        for i in range(5):
+            self.conn.execute(
+                "INSERT INTO usage_samples (timestamp, window_type, used_pct, resets_at, session_id) VALUES (?,?,?,?,?)",
+                (now - 3600 + i * 120, "5h", 10.0 + i * 5, 9000.0, "s1"))
+            self.conn.execute(
+                "INSERT INTO usage_samples (timestamp, window_type, used_pct, resets_at, session_id) VALUES (?,?,?,?,?)",
+                (now - 3600 + i * 120, "7d", 20.0 + i * 1, 8000.0, "s1"))
+        self.conn.commit()
+
+        all_rates = storage.get_historical_rates(self.conn)
+        self.assertEqual(len(all_rates), 2)
+
+        rates_5h = storage.get_historical_rates(self.conn, "5h")
+        self.assertEqual(len(rates_5h), 1)
+        rates_7d = storage.get_historical_rates(self.conn, "7d")
+        self.assertEqual(len(rates_7d), 1)
+
+        # 5h rate should be higher than 7d rate (5%/2min vs 1%/2min)
+        self.assertGreater(rates_5h[0], rates_7d[0])
+
+
 if __name__ == "__main__":
     unittest.main()

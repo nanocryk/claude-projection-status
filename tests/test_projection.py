@@ -9,6 +9,9 @@ from claude_status.projection import (
     current_session_rate,
     historical_median_rate,
     project_end_of_window,
+    rate_per_day,
+    rate_per_hour,
+    smooth_projection,
     time_to_threshold,
 )
 
@@ -140,6 +143,72 @@ class TestHistoricalMedianRate(unittest.TestCase):
 
     def test_median(self):
         self.assertEqual(historical_median_rate([1.0, 3.0, 5.0]), 3.0)
+
+
+class TestRatePerHour(unittest.TestCase):
+    def test_empty(self):
+        self.assertIsNone(rate_per_hour([]))
+
+    def test_single_sample(self):
+        self.assertIsNone(rate_per_hour([(100.0, 10.0)]))
+
+    def test_steady_increase(self):
+        now = time.time()
+        # 10% increase over 30 min = 20%/h
+        samples = [(now - 1800 + i * 60, 10.0 + i * (10.0 / 30)) for i in range(31)]
+        rate = rate_per_hour(samples)
+        self.assertIsNotNone(rate)
+        self.assertAlmostEqual(rate, 20.0, delta=1.0)
+
+    def test_negative_clamped_to_zero(self):
+        now = time.time()
+        # Decreasing usage (window reset)
+        samples = [(now - 600 + i * 60, 50.0 - i * 2) for i in range(11)]
+        rate = rate_per_hour(samples)
+        self.assertEqual(rate, 0.0)
+
+    def test_too_short_span(self):
+        now = time.time()
+        samples = [(now - 30, 10.0), (now, 11.0)]  # 30s, below 1min threshold
+        self.assertIsNone(rate_per_hour(samples))
+
+
+class TestRatePerDay(unittest.TestCase):
+    def test_empty(self):
+        self.assertIsNone(rate_per_day([]))
+
+    def test_basic_rate(self):
+        now = time.time()
+        # 5% increase over 2 hours = 60%/day
+        samples = [(now - 7200 + i * 120, 30.0 + i * (5.0 / 60)) for i in range(61)]
+        rate = rate_per_day(samples)
+        self.assertIsNotNone(rate)
+        self.assertAlmostEqual(rate, 60.0, delta=2.0)
+
+    def test_negative_clamped_to_zero(self):
+        now = time.time()
+        samples = [(now - 3600 + i * 60, 80.0 - i) for i in range(61)]
+        rate = rate_per_day(samples)
+        self.assertEqual(rate, 0.0)
+
+
+class TestSmoothProjection(unittest.TestCase):
+    def test_first_call_returns_raw(self):
+        # Clear any existing state
+        from claude_status.projection import _EMA_FILE
+        if _EMA_FILE.exists():
+            _EMA_FILE.unlink()
+        result = smooth_projection("test_window", 50.0)
+        self.assertEqual(result, 50.0)
+
+    def test_subsequent_call_smooths(self):
+        from claude_status.projection import _EMA_FILE
+        if _EMA_FILE.exists():
+            _EMA_FILE.unlink()
+        smooth_projection("test_smooth", 50.0)
+        result = smooth_projection("test_smooth", 70.0)
+        # EMA: 0.3 * 70 + 0.7 * 50 = 56
+        self.assertAlmostEqual(result, 56.0, delta=0.1)
 
 
 if __name__ == "__main__":

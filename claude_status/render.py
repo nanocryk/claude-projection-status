@@ -53,13 +53,6 @@ def _colored_pct(pct: float) -> str:
     return f"{_color_for_pct(pct)}{pct:.0f}%{RESET}"
 
 
-def _format_number(n: int) -> str:
-    if n >= 1_000_000:
-        return f"{n / 1_000_000:.0f}M"
-    if n >= 1_000:
-        return f"{n / 1_000:.0f}k"
-    return str(n)
-
 
 def _build_two_tone_bar(
     pct: float,

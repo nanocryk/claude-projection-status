@@ -13,7 +13,7 @@ COMPACT = os.environ.get("CLAUDE_STATUS_COMPACT", "").lower() in ("1", "true", "
 # Bar characters
 FILL = "\u2588"      # █ solid — current usage
 PROJ = "\u2592"      # ▒ medium shade — projected additional
-EMPTY = "\u2591"     # ░ light shade — remaining
+EMPTY = "\u2500"     # ─ thin line — remaining (visually empty)
 
 # Background colors for bar segments
 BG_GREEN = "\033[42m"
@@ -36,6 +36,15 @@ def _bg_for_pct(pct: float) -> str:
     if pct >= CRITICAL_PCT:
         return BG_RED
     if pct >= WARNING_PCT:
+        return BG_YELLOW
+    return BG_GREEN
+
+
+def _bg_for_proj(pct: float) -> str:
+    """Projection bar color: green <70%, yellow <90%, red >=90%."""
+    if pct >= 90:
+        return BG_RED
+    if pct >= 70:
         return BG_YELLOW
     return BG_GREEN
 
@@ -75,12 +84,12 @@ def _build_two_tone_bar(
     empty = width - filled - proj_filled
 
     bg_current = _bg_for_pct(pct)
-    bg_proj = _bg_for_pct(projected or pct)
+    bg_proj = _bg_for_proj(projected or pct)
 
     bar = ""
     bar += f"{bg_current}{FG_WHITE}" + FILL * filled + RESET if filled else ""
     bar += f"{DIM}{bg_proj}{FG_WHITE}" + PROJ * proj_filled + RESET if proj_filled else ""
-    bar += f"{BG_DARK}{FG_WHITE}" + EMPTY * empty + RESET if empty else ""
+    bar += f"{DIM}" + EMPTY * empty + RESET if empty else ""
 
     return f"[{bar}]"
 

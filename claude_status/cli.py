@@ -9,11 +9,14 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
-from .config import MIN_SAMPLES_FOR_PROJECTION, MIN_TIMESPAN_FOR_PROJECTION
+from .config import MIN_SAMPLES_FOR_PROJECTION, MIN_TIMESPAN_FOR_PROJECTION, log
 from .projection import (
+    compute_confidence,
+    compute_trend,
     current_session_rate,
     historical_median_rate,
     project_end_of_window,
+    smooth_projection,
     time_to_threshold,
 )
 from .render import render_status_line
@@ -79,7 +82,68 @@ def _is_bypass() -> bool:
         return False
 
 
+def _print_summary() -> None:
+    """Print usage statistics from the database."""
+    from .storage import open_db, get_hourly_activity_profile, get_historical_rates
+    from .projection import historical_median_rate
+
+    db = open_db()
+
+    # Total samples
+    total = db.execute("SELECT COUNT(*) FROM usage_samples").fetchone()[0]
+    oldest = db.execute("SELECT MIN(timestamp) FROM usage_samples").fetchone()[0]
+    newest = db.execute("SELECT MAX(timestamp) FROM usage_samples").fetchone()[0]
+
+    print(f"=== Claude Status Summary ===")
+    print(f"Total samples: {total}")
+    if oldest and newest:
+        from_dt = datetime.fromtimestamp(oldest, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
+        to_dt = datetime.fromtimestamp(newest, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
+        print(f"Date range: {from_dt} — {to_dt}")
+
+    # Distinct windows
+    windows = db.execute(
+        "SELECT window_type, COUNT(DISTINCT resets_at) FROM usage_samples GROUP BY window_type"
+    ).fetchall()
+    for wt, cnt in windows:
+        print(f"  {wt} windows tracked: {cnt}")
+
+    # Hourly activity profile
+    weekday = datetime.now(timezone.utc).weekday()
+    profile = get_hourly_activity_profile(db, current_weekday=weekday)
+    if profile:
+        print(f"\nHourly activity (P(active)):")
+        for h in range(24):
+            p = profile.get(h, 0.0)
+            bar = "#" * int(p * 20)
+            print(f"  {h:02d}:00  {bar:<20s} {p:.0%}")
+
+    # Historical rates
+    rates = get_historical_rates(db)
+    med = historical_median_rate(rates)
+    if med is not None:
+        print(f"\nHistorical median rate: {med:.3f}%/min")
+        print(f"  ({len(rates)} window(s) analyzed)")
+
+    # Peak usage windows
+    peaks = db.execute(
+        "SELECT window_type, resets_at, MAX(used_pct) FROM usage_samples "
+        "GROUP BY window_type, resets_at ORDER BY MAX(used_pct) DESC LIMIT 5"
+    ).fetchall()
+    if peaks:
+        print(f"\nTop usage windows:")
+        for wt, ra, peak in peaks:
+            reset_dt = datetime.fromtimestamp(ra, tz=timezone.utc).strftime("%Y-%m-%d %H:%M")
+            print(f"  {wt} reset {reset_dt}: peak {peak:.0f}%")
+
+    db.close()
+
+
 def main() -> None:
+    if "--summary" in sys.argv:
+        _print_summary()
+        return
+
     data = _parse_stdin()
 
     rl = data.get("rate_limits", {})
@@ -111,6 +175,10 @@ def main() -> None:
     proj_7d: Optional[float] = None
     t100_5h: Optional[str] = None
     t100_7d: Optional[str] = None
+    trend_5h: Optional[str] = None
+    trend_7d: Optional[str] = None
+    conf_5h: Optional[str] = None
+    conf_7d: Optional[str] = None
 
     try:
         db = open_db()
@@ -125,7 +193,8 @@ def main() -> None:
         if random.randint(0, 99) == 0:
             prune_old(db)
 
-        hourly_profile = get_hourly_activity_profile(db)
+        weekday = datetime.now(timezone.utc).weekday()
+        hourly_profile = get_hourly_activity_profile(db, current_weekday=weekday)
         hist_rates = get_historical_rates(db)
         hist_rate = historical_median_rate(hist_rates)
 
@@ -135,35 +204,43 @@ def main() -> None:
                 and samples[-1][0] - samples[0][0] >= MIN_TIMESPAN_FOR_PROJECTION
             )
 
-        # 5h projection
-        if pct_5h is not None and resets_5h is not None:
-            samples_5h = get_window_samples(db, "5h", resets_5h)
-            if _has_enough_data(samples_5h):
-                rate_5h = current_session_rate(samples_5h)
-                proj_5h = project_end_of_window(
-                    pct_5h, resets_5h, rate_5h, hourly_profile, hist_rate,
-                )
-                if proj_5h is not None and proj_5h > 80:
-                    t100_5h = time_to_threshold(
-                        pct_5h, resets_5h, rate_5h, hourly_profile, hist_rate,
-                    )
+        def _compute_projection(
+            wtype: str, pct: float, resets: float,
+        ) -> tuple[Optional[float], Optional[str], Optional[str], Optional[str]]:
+            samples = get_window_samples(db, wtype, resets)
+            trend = compute_trend(samples)
+            if not _has_enough_data(samples):
+                log.debug("%s: %d samples, span=%.0fs — not enough",
+                          wtype, len(samples),
+                          (samples[-1][0] - samples[0][0]) if len(samples) >= 2 else 0)
+                return None, None, trend, None
+            rate = current_session_rate(samples)
+            raw_proj = project_end_of_window(pct, resets, rate, hourly_profile, hist_rate)
+            if raw_proj is None:
+                return None, None, trend, None
 
-        # 7d projection
+            proj = smooth_projection(wtype, raw_proj)
+
+            timespan = samples[-1][0] - samples[0][0] if len(samples) >= 2 else 0
+            conf = compute_confidence(
+                len(samples), timespan, hist_rate is not None, len(hourly_profile),
+            )
+            log.debug("%s: rate=%.4f%%/min proj=%.1f%%(raw=%.1f) trend=%s conf=%s samples=%d",
+                      wtype, rate or 0, proj, raw_proj, trend, conf, len(samples))
+            t100 = None
+            if proj > 80:
+                t100 = time_to_threshold(pct, resets, rate, hourly_profile, hist_rate)
+            return proj, t100, trend, conf
+
+        if pct_5h is not None and resets_5h is not None:
+            proj_5h, t100_5h, trend_5h, conf_5h = _compute_projection("5h", pct_5h, resets_5h)
+
         if pct_7d is not None and resets_7d is not None:
-            samples_7d = get_window_samples(db, "7d", resets_7d)
-            if _has_enough_data(samples_7d):
-                rate_7d = current_session_rate(samples_7d)
-                proj_7d = project_end_of_window(
-                    pct_7d, resets_7d, rate_7d, hourly_profile, hist_rate,
-                )
-                if proj_7d is not None and proj_7d > 80:
-                    t100_7d = time_to_threshold(
-                        pct_7d, resets_7d, rate_7d, hourly_profile, hist_rate,
-                    )
+            proj_7d, t100_7d, trend_7d, conf_7d = _compute_projection("7d", pct_7d, resets_7d)
 
         db.close()
     except Exception:
-        pass  # Storage/projection failure should never break the status line
+        log.exception("storage/projection error")
 
     print(render_status_line(
         pct_5h=pct_5h,
@@ -178,4 +255,8 @@ def main() -> None:
         ctx_pct=ctx_pct,
         ctx_size=ctx_size,
         bypass=_is_bypass(),
+        trend_5h=trend_5h,
+        trend_7d=trend_7d,
+        conf_5h=conf_5h,
+        conf_7d=conf_7d,
     ))

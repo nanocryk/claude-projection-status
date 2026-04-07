@@ -8,7 +8,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
-from .config import DB_PATH, RETENTION_DAYS
+from .config import DB_PATH, RETENTION_DAYS, log
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS usage_samples (
@@ -21,10 +21,12 @@ CREATE TABLE IF NOT EXISTS usage_samples (
 );
 CREATE INDEX IF NOT EXISTS idx_samples_time ON usage_samples(timestamp);
 CREATE INDEX IF NOT EXISTS idx_samples_window ON usage_samples(window_type, resets_at);
+CREATE INDEX IF NOT EXISTS idx_samples_session ON usage_samples(window_type, session_id);
 
 CREATE TABLE IF NOT EXISTS active_hours (
     date TEXT NOT NULL,
     hour INTEGER NOT NULL,
+    weekday INTEGER NOT NULL DEFAULT 0,
     sample_count INTEGER DEFAULT 0,
     total_delta_pct REAL DEFAULT 0.0,
     PRIMARY KEY (date, hour)
@@ -32,11 +34,21 @@ CREATE TABLE IF NOT EXISTS active_hours (
 """
 
 
+def _migrate(conn: sqlite3.Connection) -> None:
+    """Add columns missing from older schema versions."""
+    cols = {row[1] for row in conn.execute("PRAGMA table_info(active_hours)").fetchall()}
+    if "weekday" not in cols:
+        conn.execute("ALTER TABLE active_hours ADD COLUMN weekday INTEGER NOT NULL DEFAULT 0")
+        conn.commit()
+        log.debug("migrated: added weekday column to active_hours")
+
+
 def open_db() -> sqlite3.Connection:
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(DB_PATH), timeout=2)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(_SCHEMA)
+    _migrate(conn)
     return conn
 
 
@@ -50,11 +62,11 @@ def record_sample(
     """Insert a usage sample, skip if unchanged from last."""
     now = time.time()
 
-    # Dedup: skip if pct and resets_at match last entry for this window
+    # Dedup: skip if pct and resets_at match last entry for this window+session
     row = conn.execute(
         "SELECT used_pct, resets_at FROM usage_samples "
-        "WHERE window_type = ? ORDER BY timestamp DESC LIMIT 1",
-        (window_type,),
+        "WHERE window_type = ? AND session_id = ? ORDER BY timestamp DESC LIMIT 1",
+        (window_type, session_id),
     ).fetchone()
     if row and row[0] == used_pct and row[1] == resets_at:
         return
@@ -64,6 +76,7 @@ def record_sample(
         "VALUES (?, ?, ?, ?, ?)",
         (now, window_type, used_pct, resets_at, session_id),
     )
+    log.debug("recorded %s: %.1f%% session=%s", window_type, used_pct, session_id[:8])
 
     # Update active_hours: compute delta from previous sample in same window
     dt = datetime.now(timezone.utc)
@@ -76,13 +89,15 @@ def record_sample(
         if used_pct > prev_pct and resets_at == row[1]:
             delta = used_pct - prev_pct
 
+    weekday = dt.weekday()  # 0=Monday, 6=Sunday
+
     conn.execute(
-        "INSERT INTO active_hours (date, hour, sample_count, total_delta_pct) "
-        "VALUES (?, ?, 1, ?) "
+        "INSERT INTO active_hours (date, hour, weekday, sample_count, total_delta_pct) "
+        "VALUES (?, ?, ?, 1, ?) "
         "ON CONFLICT(date, hour) DO UPDATE SET "
         "sample_count = sample_count + 1, "
         "total_delta_pct = total_delta_pct + ?",
-        (date_str, hour, delta, delta),
+        (date_str, hour, weekday, delta, delta),
     )
 
     conn.commit()
@@ -112,20 +127,37 @@ def get_window_samples(
 
 def get_hourly_activity_profile(
     conn: sqlite3.Connection,
+    current_weekday: Optional[int] = None,
 ) -> dict[int, float]:
     """Return {hour: probability_of_being_active} from recent history.
 
-    Activity is defined as: at least one sample recorded in that hour
-    with nonzero delta. Probability = active_days / total_days.
+    When current_weekday is provided, same-type days (weekday vs weekend)
+    get 2x weight. Activity = at least one sample with nonzero delta.
     """
     rows = conn.execute(
-        "SELECT hour, COUNT(*) as days, SUM(CASE WHEN total_delta_pct > 0 THEN 1 ELSE 0 END) as active_days "
-        "FROM active_hours GROUP BY hour",
+        "SELECT hour, weekday, "
+        "SUM(CASE WHEN total_delta_pct > 0 THEN 1 ELSE 0 END) as active, "
+        "COUNT(*) as total "
+        "FROM active_hours GROUP BY hour, weekday",
     ).fetchall()
 
+    # Accumulate weighted active/total per hour
+    hour_active: dict[int, float] = {}
+    hour_total: dict[int, float] = {}
+
+    is_weekend_now = current_weekday is not None and current_weekday >= 5
+
+    for hour, weekday, active, total in rows:
+        is_weekend_row = weekday >= 5
+        # Same day-type gets 2x weight
+        weight = 2.0 if (current_weekday is not None and is_weekend_row == is_weekend_now) else 1.0
+        hour_active[hour] = hour_active.get(hour, 0.0) + active * weight
+        hour_total[hour] = hour_total.get(hour, 0.0) + total * weight
+
     profile: dict[int, float] = {}
-    for hour, days, active_days in rows:
-        profile[hour] = active_days / days if days > 0 else 0.0
+    for hour in hour_total:
+        t = hour_total[hour]
+        profile[hour] = hour_active.get(hour, 0.0) / t if t > 0 else 0.0
     return profile
 
 

@@ -8,10 +8,14 @@ Predicts end-of-window usage % by combining:
 
 from __future__ import annotations
 
+import json
 import statistics
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Optional
+
+from .config import CACHE_DIR
 
 
 def current_session_rate(
@@ -165,3 +169,109 @@ def time_to_threshold(
         cursor = chunk_end
 
     return None  # won't hit threshold before window resets
+
+
+def compute_trend(
+    samples: list[tuple[float, float]],
+    short_window: float = 600,   # 10 min
+    long_window: float = 1800,   # 30 min
+) -> Optional[str]:
+    """Compare recent rate vs longer-term rate to detect acceleration.
+
+    Returns "up", "down", "stable", or None if not enough data.
+    """
+    if len(samples) < 3:
+        return None
+
+    now = samples[-1][0]
+
+    def _rate_in_window(window_sec: float) -> Optional[float]:
+        cutoff = now - window_sec
+        window = [(t, p) for t, p in samples if t >= cutoff]
+        if len(window) < 2:
+            return None
+        delta_pct = window[-1][1] - window[0][1]
+        delta_min = (window[-1][0] - window[0][0]) / 60
+        if delta_min < 1:
+            return None
+        return delta_pct / delta_min
+
+    short_rate = _rate_in_window(short_window)
+    long_rate = _rate_in_window(long_window)
+
+    if short_rate is None or long_rate is None:
+        return None
+    if long_rate <= 0:
+        return "stable" if short_rate <= 0 else "up"
+
+    ratio = short_rate / long_rate
+    if ratio > 1.3:
+        return "up"
+    if ratio < 0.7:
+        return "down"
+    return "stable"
+
+
+def compute_confidence(
+    n_samples: int,
+    timespan_sec: float,
+    has_hist_rate: bool,
+    profile_hours_known: int,
+) -> str:
+    """Return confidence level: "low", "medium", or "high".
+
+    Based on how much data the projection has to work with.
+    """
+    score = 0
+    if n_samples >= 20:
+        score += 2
+    elif n_samples >= 10:
+        score += 1
+    if timespan_sec >= 3600:  # 1h+
+        score += 2
+    elif timespan_sec >= 1800:  # 30min+
+        score += 1
+    if has_hist_rate:
+        score += 1
+    if profile_hours_known >= 12:
+        score += 1
+
+    if score >= 5:
+        return "high"
+    if score >= 3:
+        return "medium"
+    return "low"
+
+
+_EMA_FILE = CACHE_DIR / "ema_state.json"
+_EMA_ALPHA = 0.3  # smoothing factor: 0=fully smooth, 1=no smoothing
+
+
+def smooth_projection(
+    window_type: str,
+    raw_value: float,
+) -> float:
+    """Apply EMA smoothing to reduce projection jitter across refreshes."""
+    state: dict[str, float] = {}
+    try:
+        if _EMA_FILE.exists():
+            state = json.loads(_EMA_FILE.read_text())
+    except (json.JSONDecodeError, OSError):
+        pass
+
+    key = f"proj_{window_type}"
+    prev = state.get(key)
+
+    if prev is None:
+        smoothed = raw_value
+    else:
+        smoothed = _EMA_ALPHA * raw_value + (1 - _EMA_ALPHA) * prev
+
+    state[key] = smoothed
+    try:
+        _EMA_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _EMA_FILE.write_text(json.dumps(state))
+    except OSError:
+        pass
+
+    return smoothed

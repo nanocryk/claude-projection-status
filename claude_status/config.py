@@ -37,7 +37,7 @@ RETENTION_DAYS = int(_get("retention_days", "CLAUDE_STATUS_RETENTION", "14"))
 MIN_SAMPLES_FOR_PROJECTION = int(_get("min_samples", "CLAUDE_STATUS_MIN_SAMPLES", "5"))
 
 # Minimum time span (seconds) between first and last sample before projecting
-MIN_TIMESPAN_FOR_PROJECTION = int(_get("min_timespan", "CLAUDE_STATUS_MIN_TIMESPAN", "900"))
+MIN_TIMESPAN_FOR_PROJECTION = int(_get("min_timespan", "CLAUDE_STATUS_MIN_TIMESPAN", "600"))
 
 # ANSI codes
 GREEN = "\033[32m"

@@ -179,8 +179,9 @@ def main() -> None:
     cu = cw.get("current_usage", {}) if cw else {}
     if cu:
         cache_read = cu.get("cache_read_input_tokens", 0)
+        cache_create = cu.get("cache_creation_input_tokens", 0)
         input_tok = cu.get("input_tokens", 0)
-        total = cache_read + input_tok
+        total = cache_read + cache_create + input_tok
         if total > 0:
             cache_pct = cache_read / total * 100
 
@@ -227,7 +228,7 @@ def main() -> None:
                 bool(get_historical_rates(db, wtype)), len(hourly_profile),
             )
 
-        def _time_to_100(pct, resets, rate_per_min):
+        def _time_to_100_linear(pct, resets, rate_per_min):
             """Estimate time to 100% using linear rate."""
             if rate_per_min is None or rate_per_min <= 0:
                 return None
@@ -260,7 +261,7 @@ def main() -> None:
                     proj_5h = smooth_projection("5h", raw)
                     conf_5h = _smooth_and_conf("5h", samples_5h)
                     if proj_5h > 80:
-                        t100_5h = _time_to_100(pct_5h, resets_5h, rate)
+                        t100_5h = time_to_threshold(pct_5h, resets_5h, rate, hourly_profile, hist_rate)
                     log.debug("5h: rate=%.4f%%/min proj=%.1f%% conf=%s samples=%d",
                               rate or 0, proj_5h, conf_5h, len(samples_5h))
 
@@ -284,7 +285,7 @@ def main() -> None:
                     proj_7d = smooth_projection("7d", raw)
                     conf_7d = _smooth_and_conf("7d", samples_7d)
                     if proj_7d > 80:
-                        t100_7d = _time_to_100(pct_7d, resets_7d, rate_7d_min)
+                        t100_7d = _time_to_100_linear(pct_7d, resets_7d, rate_7d_min)
                     log.debug("7d: rate=%.4f%%/min proj=%.1f%% conf=%s samples=%d",
                               rate_7d_min or 0, proj_7d, conf_7d, len(samples_7d))
 

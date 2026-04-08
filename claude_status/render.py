@@ -106,7 +106,7 @@ def _confidence_prefix(conf: Optional[str]) -> str:
         return "~"
     if conf == "medium":
         return "\u2248"  # ≈
-    return ""
+    return " "
 
 
 def _visible_len(s: str) -> int:

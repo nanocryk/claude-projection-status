@@ -52,7 +52,7 @@ def _parse_stdin() -> dict[str, Any]:
 def _format_cooldown(resets_at: Optional[float], use_days: bool = False) -> str:
     """Format time remaining until window reset."""
     if resets_at is None:
-        return "--"
+        return "   --"
     now = datetime.now(timezone.utc)
     diff = datetime.fromtimestamp(resets_at, tz=timezone.utc) - now
     total_sec = max(0, int(diff.total_seconds()))
@@ -60,10 +60,10 @@ def _format_cooldown(resets_at: Optional[float], use_days: bool = False) -> str:
     h = (total_sec % 86400) // 3600
     m = (total_sec % 3600) // 60
     if use_days and d > 0:
-        return f"{d}d{h:02d}h"
+        return f"{d}d{h:02d}h".rjust(5)
     if h > 0:
-        return f"{h}h{m:02d}m"
-    return f"{m}m"
+        return f"{h}h{m:02d}m".rjust(5)
+    return f"{m}m".rjust(5)
 
 
 def _is_bypass() -> bool:

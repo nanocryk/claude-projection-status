@@ -135,7 +135,7 @@ def _format_window(
             proj_color = _color_for_pct(projected)
             if projected > 80:
                 proj_color = BOLD + RED
-            proj_str = "100+" if projected > 100 else f"{projected:.0f}"
+            proj_str = "100" if projected > 100 else f"{projected:.0f}"
             parts.append(f"{DIM}\u2192{RESET}{proj_color}{proj_str}{RESET}")
         return "".join(parts)
 
@@ -154,7 +154,7 @@ def _format_window(
         if projected > 80:
             proj_color = BOLD + RED
         cpfx = _confidence_prefix(confidence)
-        proj_str = "100%+" if projected > 100 else f"{projected:.0f}%"
+        proj_str = "100%" if projected > 100 else f"{f'{projected:.0f}%':>4}"
         parts.append(f"{DIM}~>{RESET}{proj_color}{cpfx}{proj_str}{RESET}")
     elif proj_eta:
         parts.append(f"{DIM}~>{f'{proj_eta}':>4}{RESET}")

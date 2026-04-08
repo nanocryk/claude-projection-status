@@ -6,7 +6,9 @@ import os
 import re
 from typing import Optional
 
-from .config import WARNING_PCT, CRITICAL_PCT, GREEN, YELLOW, RED, BOLD, DIM, RESET
+from .config import WARNING_PCT, CRITICAL_PCT, GREEN, YELLOW, RED, BOLD, DIM, RESET, MULTILINE
+
+_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
 
 COMPACT = os.environ.get("CLAUDE_STATUS_COMPACT", "").lower() in ("1", "true", "yes")
 
@@ -95,7 +97,7 @@ def _trend_arrow(trend: Optional[str]) -> str:
         return f"{GREEN}\u2193{RESET}"     # ↓
     if trend == "stable":
         return f"{DIM}\u2192{RESET}"       # →
-    return ""
+    return " "
 
 
 def _confidence_prefix(conf: Optional[str]) -> str:
@@ -107,6 +109,11 @@ def _confidence_prefix(conf: Optional[str]) -> str:
     return ""
 
 
+def _visible_len(s: str) -> int:
+    """Length of string after stripping ANSI escape codes."""
+    return len(_ANSI_RE.sub("", s))
+
+
 def _format_window(
     label: str,
     pct: Optional[float],
@@ -116,6 +123,7 @@ def _format_window(
     trend: Optional[str] = None,
     confidence: Optional[str] = None,
     rate_str: str = "",
+    prefix_width: int = 0,
 ) -> str:
     if pct is None:
         if COMPACT:
@@ -133,8 +141,14 @@ def _format_window(
         return "".join(parts)
 
     # Full mode: [cooldown] label:[bar]pct% ~>proj trend rate !time
+    prefix = f"{DIM}[{cooldown}]{RESET} {DIM}{label}:{RESET}"
+    if prefix_width > 0:
+        pad = prefix_width - _visible_len(prefix)
+        if pad > 0:
+            prefix += " " * pad
+
     bar = _build_two_tone_bar(pct, projected)
-    parts = [f"{DIM}[{cooldown}]{RESET} {DIM}{label}:{RESET}{bar}{_colored_pct(pct)}"]
+    parts = [f"{prefix}{bar}{_colored_pct(pct)}"]
 
     if projected is not None:
         proj_color = _color_for_pct(projected)
@@ -200,20 +214,13 @@ def render_status_line(
     proj_eta: Optional[str] = None,
     peak_hour: bool = False,
 ) -> str:
-    seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h,
-                             trend_5h, conf_5h, _format_rate_h(rate_per_h))
-    seg_7d = _format_window("7d", pct_7d, proj_7d, cooldown_7d, time_to_100_7d,
-                             trend_7d, conf_7d, _format_rate_d(rate_per_d))
-
     # Model segment with context + cache hit
     model_clean = re.sub(r"\s*\([^)]*context[^)]*\)", "", model)
     info_parts: list[str] = []
     if ctx_pct is not None and ctx_size > 0:
-        # ctx: green <50%, yellow <80%, red >=80%
         cc = GREEN if ctx_pct < 50 else (YELLOW if ctx_pct < 80 else RED)
         info_parts.append(f"{cc}{ctx_pct:.0f}%ctx{RESET}")
     if cache_pct is not None:
-        # hit: green >=80%, yellow >=50%, red <50%
         hc = GREEN if cache_pct >= 80 else (YELLOW if cache_pct >= 50 else RED)
         info_parts.append(f"{hc}{cache_pct:.0f}%hit{RESET}")
     if info_parts:
@@ -222,8 +229,43 @@ def render_status_line(
         model_seg = model_clean
 
     if COMPACT:
+        seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h,
+                                 trend_5h, conf_5h, _format_rate_h(rate_per_h))
+        seg_7d = _format_window("7d", pct_7d, proj_7d, cooldown_7d, time_to_100_7d,
+                                 trend_7d, conf_7d, _format_rate_d(rate_per_d))
         return f"{seg_5h} {seg_7d} {DIM}{model_clean}{RESET}"
 
+    # Compute aligned prefix width for bar alignment
+    prefix_width = 0
+    if MULTILINE:
+        pfx_5h = f"[{cooldown_5h}] 5h:"
+        pfx_7d = f"[{cooldown_7d}] 7d:"
+        prefix_width = max(len(pfx_5h), len(pfx_7d))
+
+    seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h,
+                             trend_5h, conf_5h, _format_rate_h(rate_per_h),
+                             prefix_width=prefix_width)
+    seg_7d = _format_window("7d", pct_7d, proj_7d, cooldown_7d, time_to_100_7d,
+                             trend_7d, conf_7d, _format_rate_d(rate_per_d),
+                             prefix_width=prefix_width)
+
+    if MULTILINE:
+        # Line 1: 5h + extras (3-char gap between zones)
+        extras_1: list[str] = []
+        if proj_eta and proj_5h is None:
+            extras_1.append(f"{DIM}proj~{proj_eta}{RESET}")
+        if peak_hour:
+            extras_1.append(f"{YELLOW}peak-h{RESET}")
+        if bypass:
+            extras_1.append(f"{BOLD}{RED}[BYPASS]{RESET}")
+        line1 = seg_5h + ("   " + " ".join(extras_1) if extras_1 else "")
+
+        # Line 2: 7d + model info (3-char gap)
+        line2 = seg_7d + "   " + f"{DIM}{model_seg}{RESET}"
+
+        return line1 + "\n" + line2
+
+    # Single-line mode
     parts = [seg_5h, seg_7d]
 
     if proj_eta and proj_5h is None:

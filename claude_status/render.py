@@ -40,11 +40,11 @@ def _bg_for_pct(pct: float) -> str:
     return BG_GREEN
 
 
-def _fg_for_proj(pct: float) -> str:
-    """Projection bar foreground color: green <70%, yellow <90%, red >=90%."""
-    if pct >= 90:
+def _fg_for_proj(pct: float, warn: float = 75, crit: float = 90) -> str:
+    """Projection foreground color with per-window thresholds."""
+    if pct >= crit:
         return RED
-    if pct >= 70:
+    if pct >= warn:
         return YELLOW
     return GREEN
 
@@ -58,6 +58,8 @@ def _build_two_tone_bar(
     pct: float,
     projected: Optional[float],
     width: int = 10,
+    proj_warn: float = 75,
+    proj_crit: float = 90,
 ) -> str:
     """Two-tone bar: solid=current, dim=projected extra, empty=remaining.
 
@@ -77,7 +79,7 @@ def _build_two_tone_bar(
     empty = width - filled - proj_filled
 
     bg_current = _bg_for_pct(pct)
-    fg_proj = _fg_for_proj(projected or pct)
+    fg_proj = _fg_for_proj(projected or pct, proj_warn, proj_crit)
 
     bar = ""
     bar += f"{bg_current}{FG_WHITE}" + FILL * filled + RESET if filled else ""
@@ -123,6 +125,8 @@ def _format_window(
     rate_str: str = "",
     prefix_width: int = 0,
     proj_eta: Optional[str] = None,
+    proj_warn: float = 75,
+    proj_crit: float = 90,
 ) -> str:
     if pct is None:
         if COMPACT:
@@ -132,9 +136,7 @@ def _format_window(
     if COMPACT:
         parts = [f"{DIM}{label}:{RESET}{_colored_pct(pct)}"]
         if projected is not None:
-            proj_color = _color_for_pct(projected)
-            if projected > 80:
-                proj_color = BOLD + RED
+            proj_color = _fg_for_proj(projected, proj_warn, proj_crit)
             proj_str = "100" if projected > 100 else f"{projected:.0f}"
             parts.append(f"{DIM}\u2192{RESET}{proj_color}{proj_str}{RESET}")
         return "".join(parts)
@@ -146,13 +148,11 @@ def _format_window(
         if pad > 0:
             prefix += " " * pad
 
-    bar = _build_two_tone_bar(pct, projected)
+    bar = _build_two_tone_bar(pct, projected, proj_warn=proj_warn, proj_crit=proj_crit)
     parts = [f"{prefix}{bar}{_colored_pct(pct)}"]
 
     if projected is not None:
-        proj_color = _color_for_pct(projected)
-        if projected > 80:
-            proj_color = BOLD + RED
+        proj_color = _fg_for_proj(projected, proj_warn, proj_crit)
         cpfx = _confidence_prefix(confidence)
         proj_str = "100%" if projected > 100 else f"{f'{projected:.0f}%':>4}"
         parts.append(f"{DIM}~>{RESET}{proj_color}{cpfx}{proj_str}{RESET}")
@@ -231,9 +231,11 @@ def render_status_line(
 
     if COMPACT:
         seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h,
-                                 trend_5h, conf_5h, _format_rate_h(rate_per_h))
+                                 trend_5h, conf_5h, _format_rate_h(rate_per_h),
+                                 proj_warn=75, proj_crit=90)
         seg_7d = _format_window("7d", pct_7d, proj_7d, cooldown_7d, time_to_100_7d,
-                                 trend_7d, conf_7d, _format_rate_d(rate_per_d))
+                                 trend_7d, conf_7d, _format_rate_d(rate_per_d),
+                                 proj_warn=85, proj_crit=95)
         return f"{seg_5h} {seg_7d} {DIM}{model_clean}{RESET}"
 
     # Compute aligned prefix width for bar alignment
@@ -246,10 +248,12 @@ def render_status_line(
     seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h,
                              trend_5h, conf_5h, _format_rate_h(rate_per_h),
                              prefix_width=prefix_width,
-                             proj_eta=proj_eta if proj_5h is None else None)
+                             proj_eta=proj_eta if proj_5h is None else None,
+                             proj_warn=75, proj_crit=90)
     seg_7d = _format_window("7d", pct_7d, proj_7d, cooldown_7d, time_to_100_7d,
                              trend_7d, conf_7d, _format_rate_d(rate_per_d),
-                             prefix_width=prefix_width)
+                             prefix_width=prefix_width,
+                             proj_warn=85, proj_crit=95)
 
     if MULTILINE:
         # Line 1: 5h + extras (3-char gap between zones)

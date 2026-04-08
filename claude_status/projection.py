@@ -12,58 +12,62 @@ import json
 import statistics
 import time
 from datetime import datetime, timezone
-from pathlib import Path
-from typing import Optional
+from typing import Iterator, Optional
 
 from .config import CACHE_DIR
 
+# --- Constants ---
 
-def rate_per_hour(
+SESSION_RATE_WEIGHT = 0.6
+HIST_RATE_WEIGHT = 0.4
+DEFAULT_ACTIVITY_PROB = 0.3
+PROJECTION_CAP = 110.0
+MAX_IDLE_GAP_MIN = 30
+TREND_SHORT_SEC = 600   # 10 min
+TREND_LONG_SEC = 1800   # 30 min
+TREND_UP_RATIO = 1.3
+TREND_DOWN_RATIO = 0.7
+
+
+# --- Rate computation ---
+
+def _compute_rate(
     samples: list[tuple[float, float]],
+    window_sec: float,
+    min_delta: float,
+    unit_sec: float,
 ) -> Optional[float]:
-    """Compute current usage rate as %/hour from recent samples.
+    """Compute usage rate over a time window.
 
-    Uses last 30 minutes of data for a stable reading.
+    Args:
+        window_sec: How far back to look from the last sample.
+        min_delta: Minimum time delta (in unit_sec units) to avoid noise.
+        unit_sec: Divisor for time (3600=hours, 86400=days).
     """
     if len(samples) < 2:
         return None
 
     now = samples[-1][0]
-    cutoff = now - 1800  # last 30 min
+    cutoff = now - window_sec
     recent = [(t, p) for t, p in samples if t >= cutoff]
     if len(recent) < 2:
         return None
 
     delta_pct = recent[-1][1] - recent[0][1]
-    delta_hours = (recent[-1][0] - recent[0][0]) / 3600
-    if delta_hours < 0.02:  # ~1 min minimum
+    delta_units = (recent[-1][0] - recent[0][0]) / unit_sec
+    if delta_units < min_delta:
         return None
-    rate = delta_pct / delta_hours
-    return max(0.0, rate)  # negative means window reset, ignore
+    return max(0.0, delta_pct / delta_units)
 
 
-def rate_per_day(
-    samples: list[tuple[float, float]],
-) -> Optional[float]:
-    """Compute current usage rate as %/day from recent samples.
+def rate_per_hour(samples: list[tuple[float, float]]) -> Optional[float]:
+    """Current usage rate as %/hour (last 30 min window)."""
+    return _compute_rate(samples, window_sec=1800, min_delta=0.02, unit_sec=3600)
 
-    Uses last 24 hours of data for a stable reading.
-    """
-    if len(samples) < 2:
-        return None
 
-    now = samples[-1][0]
-    cutoff = now - 86400  # last 24h
-    recent = [(t, p) for t, p in samples if t >= cutoff]
-    if len(recent) < 2:
-        return None
-
-    delta_pct = recent[-1][1] - recent[0][1]
-    delta_days = (recent[-1][0] - recent[0][0]) / 86400
-    if delta_days < 0.01:  # ~15 min minimum
-        return None
-    rate = delta_pct / delta_days
-    return max(0.0, rate)
+def rate_per_day(samples: list[tuple[float, float]]) -> Optional[float]:
+    """Current usage rate as %/day (last 24h window)."""
+    return _compute_rate(samples, window_sec=86400, min_delta=0.01, unit_sec=86400)
 
 
 def overall_rate(
@@ -83,30 +87,12 @@ def overall_rate(
     return max(0.0, delta_pct / delta_min)
 
 
-def project_linear(
-    current_pct: float,
-    resets_at: float,
-    rate: Optional[float],
-) -> Optional[float]:
-    """Simple linear projection: current + rate * remaining_minutes.
-
-    No hourly profile adjustment — the rate already includes idle patterns.
-    Better for long windows (7d).
-    """
-    if rate is None or rate <= 0:
-        return current_pct
-    now = time.time()
-    remaining_min = max(0, (resets_at - now) / 60)
-    return min(current_pct + rate * remaining_min, 110.0)
-
-
 def current_session_rate(
     samples: list[tuple[float, float]],
 ) -> Optional[float]:
     """Compute %/minute from recent samples where usage increased.
 
-    samples: [(timestamp, used_pct)] sorted by timestamp.
-    Returns None if insufficient data.
+    Skips idle gaps (>30min). Weights recent pairs higher via exponential decay.
     """
     if len(samples) < 2:
         return None
@@ -119,11 +105,9 @@ def current_session_rate(
         delta_sec = samples[i][0] - samples[i - 1][0]
         delta_min = delta_sec / 60
 
-        # Skip idle gaps (>30min between samples) and non-increasing
-        if delta_pct <= 0 or delta_min <= 0 or delta_min > 30:
+        if delta_pct <= 0 or delta_min <= 0 or delta_min > MAX_IDLE_GAP_MIN:
             continue
 
-        # Exponential recency weight: more recent pairs weighted higher
         # Weight = 2^(position/total) so last pair has ~2x weight of first
         weight = 2 ** (i / len(samples))
         weighted_pct += delta_pct * weight
@@ -141,6 +125,48 @@ def historical_median_rate(rates: list[float]) -> Optional[float]:
     return statistics.median(rates)
 
 
+# --- Shared projection helpers ---
+
+def _blend_rate(
+    session_rate: Optional[float],
+    hist_rate: Optional[float],
+) -> Optional[float]:
+    """Blend session rate (60%) with historical median (40%).
+
+    Falls back to whichever is available. Returns None if neither.
+    """
+    rates: list[tuple[float, float]] = []
+    if session_rate is not None:
+        rates.append((session_rate, SESSION_RATE_WEIGHT))
+    if hist_rate is not None:
+        rates.append((hist_rate, HIST_RATE_WEIGHT if session_rate is not None else 1.0))
+
+    if not rates:
+        return None
+
+    total_w = sum(w for _, w in rates)
+    return sum(r * w for r, w in rates) / total_w
+
+
+def _walk_hours(
+    start: float,
+    end: float,
+    hourly_profile: dict[int, float],
+) -> Iterator[tuple[float, float]]:
+    """Yield (minutes_in_chunk, activity_prob) for each hour-slot between start and end."""
+    cursor = start
+    while cursor < end:
+        dt = datetime.fromtimestamp(cursor, tz=timezone.utc)
+        next_hour = cursor + (3600 - dt.minute * 60 - dt.second)
+        chunk_end = min(next_hour, end)
+        minutes = (chunk_end - cursor) / 60
+        prob = hourly_profile.get(dt.hour, DEFAULT_ACTIVITY_PROB)
+        yield minutes, prob
+        cursor = chunk_end
+
+
+# --- Projection functions ---
+
 def project_end_of_window(
     current_pct: float,
     resets_at: float,
@@ -151,46 +177,36 @@ def project_end_of_window(
     """Project usage % at end of window.
 
     Walks hour-by-hour, multiplying effective rate by P(active) per hour.
-    Returns None if no rate data available.
     """
     now = time.time()
-    remaining = resets_at - now
-    if remaining <= 0:
+    if resets_at - now <= 0:
         return current_pct
 
-    # Determine effective rate with weights
-    rates_with_weights: list[tuple[float, float]] = []
-    if session_rate is not None:
-        # More weight if we have decent session data
-        rates_with_weights.append((session_rate, 0.6))
-    if hist_rate is not None:
-        rates_with_weights.append((hist_rate, 0.4 if session_rate is not None else 1.0))
-
-    if not rates_with_weights:
+    effective_rate = _blend_rate(session_rate, hist_rate)
+    if effective_rate is None:
         return None
 
-    total_weight = sum(w for _, w in rates_with_weights)
-    effective_rate = sum(r * w for r, w in rates_with_weights) / total_weight
-
-    # Walk hour by hour from now to resets_at
     projected = current_pct
-    cursor = now
+    for minutes, prob in _walk_hours(now, resets_at, hourly_profile):
+        projected += effective_rate * minutes * prob
 
-    while cursor < resets_at:
-        dt = datetime.fromtimestamp(cursor, tz=timezone.utc)
-        hour = dt.hour
+    return min(projected, PROJECTION_CAP)
 
-        # Next hour boundary
-        next_hour = cursor + (3600 - dt.minute * 60 - dt.second)
-        chunk_end = min(next_hour, resets_at)
-        minutes_in_chunk = (chunk_end - cursor) / 60
 
-        activity_prob = hourly_profile.get(hour, 0.3)  # default 30% if unknown
+def project_linear(
+    current_pct: float,
+    resets_at: float,
+    rate: Optional[float],
+) -> Optional[float]:
+    """Simple linear projection: current + rate * remaining_minutes.
 
-        projected += effective_rate * minutes_in_chunk * activity_prob
-        cursor = chunk_end
-
-    return min(projected, 110.0)  # cap slightly above 100 for display
+    No hourly profile — rate already includes idle patterns. Better for 7d.
+    """
+    if rate is None or rate <= 0:
+        return current_pct
+    now = time.time()
+    remaining_min = max(0, (resets_at - now) / 60)
+    return min(current_pct + rate * remaining_min, PROJECTION_CAP)
 
 
 def time_to_threshold(
@@ -203,60 +219,47 @@ def time_to_threshold(
 ) -> Optional[str]:
     """Estimate time until usage hits threshold. Returns formatted string or None."""
     now = time.time()
-    remaining = resets_at - now
-    if remaining <= 0:
+    if resets_at - now <= 0:
         return None
 
-    rates_with_weights: list[tuple[float, float]] = []
-    if session_rate is not None:
-        rates_with_weights.append((session_rate, 0.6))
-    if hist_rate is not None:
-        rates_with_weights.append((hist_rate, 0.4 if session_rate is not None else 1.0))
-
-    if not rates_with_weights:
+    effective_rate = _blend_rate(session_rate, hist_rate)
+    if effective_rate is None:
         return None
 
-    total_weight = sum(w for _, w in rates_with_weights)
-    effective_rate = sum(r * w for r, w in rates_with_weights) / total_weight
-
-    # Walk hour by hour, track when we cross threshold
     projected = current_pct
-    cursor = now
+    elapsed_sec = 0.0
 
-    while cursor < resets_at:
-        dt = datetime.fromtimestamp(cursor, tz=timezone.utc)
-        hour = dt.hour
-        next_hour = cursor + (3600 - dt.minute * 60 - dt.second)
-        chunk_end = min(next_hour, resets_at)
-        minutes_in_chunk = (chunk_end - cursor) / 60
-
-        activity_prob = hourly_profile.get(hour, 0.3)
-        chunk_increase = effective_rate * minutes_in_chunk * activity_prob
+    for minutes, prob in _walk_hours(now, resets_at, hourly_profile):
+        chunk_increase = effective_rate * minutes * prob
 
         if projected + chunk_increase >= threshold:
-            # Interpolate within this chunk
             needed = threshold - projected
-            if effective_rate * activity_prob > 0:
-                mins_needed = needed / (effective_rate * activity_prob)
-                hit_time = cursor + mins_needed * 60
-                secs_from_now = hit_time - now
+            if effective_rate * prob > 0:
+                mins_needed = needed / (effective_rate * prob)
+                secs_from_now = elapsed_sec + mins_needed * 60
                 if secs_from_now < 60:
                     return "<1m"
-                mins = int(secs_from_now / 60)
-                if mins >= 60:
-                    return f"{mins // 60}h{mins % 60:02d}m"
-                return f"{mins}m"
+                total_min = int(secs_from_now / 60)
+                if total_min >= 1440:
+                    d = total_min // 1440
+                    h = (total_min % 1440) // 60
+                    return f"{d}d{h:02d}h"
+                if total_min >= 60:
+                    return f"{total_min // 60}h{total_min % 60:02d}m"
+                return f"{total_min}m"
 
         projected += chunk_increase
-        cursor = chunk_end
+        elapsed_sec += minutes * 60
 
     return None  # won't hit threshold before window resets
 
 
+# --- Trend & confidence ---
+
 def compute_trend(
     samples: list[tuple[float, float]],
-    short_window: float = 600,   # 10 min
-    long_window: float = 1800,   # 30 min
+    short_window: float = TREND_SHORT_SEC,
+    long_window: float = TREND_LONG_SEC,
 ) -> Optional[str]:
     """Compare recent rate vs longer-term rate to detect acceleration.
 
@@ -287,9 +290,9 @@ def compute_trend(
         return "stable" if short_rate <= 0 else "up"
 
     ratio = short_rate / long_rate
-    if ratio > 1.3:
+    if ratio > TREND_UP_RATIO:
         return "up"
-    if ratio < 0.7:
+    if ratio < TREND_DOWN_RATIO:
         return "down"
     return "stable"
 
@@ -300,18 +303,15 @@ def compute_confidence(
     has_hist_rate: bool,
     profile_hours_known: int,
 ) -> str:
-    """Return confidence level: "low", "medium", or "high".
-
-    Based on how much data the projection has to work with.
-    """
+    """Return confidence level: "low", "medium", or "high"."""
     score = 0
     if n_samples >= 20:
         score += 2
     elif n_samples >= 10:
         score += 1
-    if timespan_sec >= 3600:  # 1h+
+    if timespan_sec >= 3600:
         score += 2
-    elif timespan_sec >= 1800:  # 30min+
+    elif timespan_sec >= 1800:
         score += 1
     if has_hist_rate:
         score += 1
@@ -325,8 +325,10 @@ def compute_confidence(
     return "low"
 
 
+# --- EMA smoothing ---
+
 _EMA_FILE = CACHE_DIR / "ema_state.json"
-_EMA_ALPHA = 0.3  # smoothing factor: 0=fully smooth, 1=no smoothing
+_EMA_ALPHA = 0.3
 
 
 def smooth_projection(

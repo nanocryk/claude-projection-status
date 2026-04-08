@@ -21,9 +21,7 @@ EMPTY = "\u2500"     # ─ thin line — remaining (visually empty)
 BG_GREEN = BAR_GREEN
 BG_YELLOW = "\033[43m"
 BG_RED = "\033[41m"
-BG_DARK = "\033[100m"
 FG_WHITE = "\033[97m"
-FG_BLACK = "\033[30m"
 
 
 def _color_for_pct(pct: float) -> str:

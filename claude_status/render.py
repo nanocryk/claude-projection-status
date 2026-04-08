@@ -50,7 +50,7 @@ def _fg_for_proj(pct: float) -> str:
 
 
 def _colored_pct(pct: float) -> str:
-    return f"{_color_for_pct(pct)}{pct:.0f}%{RESET}"
+    return f"{_color_for_pct(pct)}{f'{pct:.0f}%':>4}{RESET}"
 
 
 
@@ -122,6 +122,7 @@ def _format_window(
     confidence: Optional[str] = None,
     rate_str: str = "",
     prefix_width: int = 0,
+    proj_eta: Optional[str] = None,
 ) -> str:
     if pct is None:
         if COMPACT:
@@ -155,6 +156,8 @@ def _format_window(
         cpfx = _confidence_prefix(confidence)
         proj_str = "100%+" if projected > 100 else f"{projected:.0f}%"
         parts.append(f"{DIM}~>{RESET}{proj_color}{cpfx}{proj_str}{RESET}")
+    elif proj_eta:
+        parts.append(f"{DIM}~>{f'{proj_eta}':>4}{RESET}")
 
     arrow = _trend_arrow(trend)
     if arrow:
@@ -242,7 +245,8 @@ def render_status_line(
 
     seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h,
                              trend_5h, conf_5h, _format_rate_h(rate_per_h),
-                             prefix_width=prefix_width)
+                             prefix_width=prefix_width,
+                             proj_eta=proj_eta if proj_5h is None else None)
     seg_7d = _format_window("7d", pct_7d, proj_7d, cooldown_7d, time_to_100_7d,
                              trend_7d, conf_7d, _format_rate_d(rate_per_d),
                              prefix_width=prefix_width)
@@ -250,8 +254,6 @@ def render_status_line(
     if MULTILINE:
         # Line 1: 5h + extras (3-char gap between zones)
         extras_1: list[str] = []
-        if proj_eta and proj_5h is None:
-            extras_1.append(f"{DIM}proj~{proj_eta}{RESET}")
         if peak_hour:
             extras_1.append(f"{YELLOW}peak-h{RESET}")
         if bypass:
@@ -265,9 +267,6 @@ def render_status_line(
 
     # Single-line mode
     parts = [seg_5h, seg_7d]
-
-    if proj_eta and proj_5h is None:
-        parts.append(f"{DIM}proj~{proj_eta}{RESET}")
 
     parts.append(f"{DIM}{model_seg}{RESET}")
 

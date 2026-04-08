@@ -6,7 +6,7 @@ import os
 import re
 from typing import Optional
 
-from .config import WARNING_PCT, CRITICAL_PCT, GREEN, YELLOW, RED, BOLD, DIM, RESET, MULTILINE
+from .config import WARNING_PCT, CRITICAL_PCT, GREEN, BAR_GREEN, YELLOW, RED, BOLD, DIM, RESET, MULTILINE
 
 _ANSI_RE = re.compile(r"\033\[[0-9;]*m")
 
@@ -14,11 +14,11 @@ COMPACT = os.environ.get("CLAUDE_STATUS_COMPACT", "").lower() in ("1", "true", "
 
 # Bar characters
 FILL = "\u2588"      # █ solid — current usage
-PROJ = "\u2592"      # ▒ medium shade — projected additional
+PROJ = "\u2588"      # █ solid — projected additional (color differentiates)
 EMPTY = "\u2500"     # ─ thin line — remaining (visually empty)
 
 # Background colors for bar segments
-BG_GREEN = "\033[42m"
+BG_GREEN = BAR_GREEN
 BG_YELLOW = "\033[43m"
 BG_RED = "\033[41m"
 BG_DARK = "\033[100m"
@@ -42,13 +42,13 @@ def _bg_for_pct(pct: float) -> str:
     return BG_GREEN
 
 
-def _bg_for_proj(pct: float) -> str:
-    """Projection bar color: green <70%, yellow <90%, red >=90%."""
+def _fg_for_proj(pct: float) -> str:
+    """Projection bar foreground color: green <70%, yellow <90%, red >=90%."""
     if pct >= 90:
-        return BG_RED
+        return RED
     if pct >= 70:
-        return BG_YELLOW
-    return BG_GREEN
+        return YELLOW
+    return GREEN
 
 
 def _colored_pct(pct: float) -> str:
@@ -79,11 +79,11 @@ def _build_two_tone_bar(
     empty = width - filled - proj_filled
 
     bg_current = _bg_for_pct(pct)
-    bg_proj = _bg_for_proj(projected or pct)
+    fg_proj = _fg_for_proj(projected or pct)
 
     bar = ""
     bar += f"{bg_current}{FG_WHITE}" + FILL * filled + RESET if filled else ""
-    bar += f"{DIM}{bg_proj}{FG_WHITE}" + PROJ * proj_filled + RESET if proj_filled else ""
+    bar += f"{fg_proj}" + PROJ * proj_filled + RESET if proj_filled else ""
     bar += f"{DIM}" + EMPTY * empty + RESET if empty else ""
 
     return f"[{bar}]"

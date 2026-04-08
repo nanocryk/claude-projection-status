@@ -1,4 +1,4 @@
-# claude-status
+# claude-projection-status
 
 A custom status bar for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that replaces the default rate-limit display with rich usage visualization, projections, and historical tracking.
 
@@ -37,7 +37,7 @@ Claude Code pipes rate-limit JSON to stdin on each status refresh. This tool:
 
 ### Data Storage
 
-SQLite database at `~/.cache/claude-status/history.db` with two tables:
+SQLite database at `~/.cache/claude-projection-status/history.db` with two tables:
 - `usage_samples` — timestamped usage snapshots per window type
 - `active_hours` — hourly activity profile (sample count + usage delta per hour/weekday)
 
@@ -49,8 +49,8 @@ Requires Python >= 3.10. No external dependencies.
 
 ```bash
 # Clone
-git clone https://github.com/user/custom-claude-statusbar.git
-cd custom-claude-statusbar
+git clone https://github.com/nanocryk/claude-projection-status.git
+cd claude-projection-status
 
 # Install (editable mode recommended for easy updates)
 pip install -e .
@@ -64,7 +64,7 @@ Add to `~/.claude/settings.json`:
 {
   "statusLine": {
     "type": "command",
-    "command": "/path/to/custom-claude-statusbar/claude-status",
+    "command": "/path/to/claude-projection-status/claude-status",
     "padding": 0
   }
 }
@@ -84,7 +84,7 @@ Or if installed via pip:
 
 ## Configuration
 
-Settings are read from `~/.config/claude-status/config.json`, overridable by environment variables. Env vars take precedence over the config file.
+Settings are read from `~/.config/claude-projection-status/config.json`, overridable by environment variables. Env vars take precedence over the config file.
 
 ```json
 {
@@ -102,7 +102,7 @@ Settings are read from `~/.config/claude-status/config.json`, overridable by env
 | `multiline` | `CLAUDE_STATUS_MULTILINE` | `false` | Two-line layout (5h + 7d stacked) |
 | `warning_pct` | `CLAUDE_STATUS_WARNING` | `40` | Yellow threshold (%) |
 | `critical_pct` | `CLAUDE_STATUS_CRITICAL` | `70` | Red threshold (%) |
-| `cache_dir` | `CLAUDE_STATUS_CACHE` | `~/.cache/claude-status` | Database and cache location |
+| `cache_dir` | `CLAUDE_STATUS_CACHE` | `~/.cache/claude-projection-status` | Database and cache location |
 | `retention_days` | `CLAUDE_STATUS_RETENTION` | `14` | Days of history to keep |
 | `min_samples` | `CLAUDE_STATUS_MIN_SAMPLES` | `5` | Minimum samples before projecting |
 | `min_timespan` | `CLAUDE_STATUS_MIN_TIMESPAN` | `600` | Seconds of data needed before projecting |

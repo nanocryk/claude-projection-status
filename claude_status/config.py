@@ -4,11 +4,11 @@ import os
 from pathlib import Path
 from typing import Any
 
-# Config file: ~/.config/claude-status/config.json
+# Config file: ~/.config/claude-projection-status/config.json
 # Env vars override config file values.
 CONFIG_PATH = Path(os.environ.get(
     "CLAUDE_STATUS_CONFIG",
-    Path.home() / ".config" / "claude-status" / "config.json",
+    Path.home() / ".config" / "claude-projection-status" / "config.json",
 ))
 
 def _load_config_file() -> dict[str, Any]:
@@ -32,7 +32,7 @@ CRITICAL_PCT = float(_get("critical_pct", "CLAUDE_STATUS_CRITICAL", "70"))
 MULTILINE = _get("multiline", "CLAUDE_STATUS_MULTILINE", "false").lower() in ("1", "true", "yes")
 
 CACHE_DIR = Path(_get("cache_dir", "CLAUDE_STATUS_CACHE",
-                       str(Path.home() / ".cache" / "claude-status")))
+                       str(Path.home() / ".cache" / "claude-projection-status")))
 DB_PATH = CACHE_DIR / "history.db"
 RETENTION_DAYS = int(_get("retention_days", "CLAUDE_STATUS_RETENTION", "14"))
 
@@ -52,7 +52,7 @@ RESET = "\033[0m"
 
 # Debug logging
 DEBUG = _get("debug", "CLAUDE_STATUS_DEBUG", "false").lower() in ("1", "true", "yes")
-log = logging.getLogger("claude-status")
+log = logging.getLogger("claude-projection-status")
 
 if DEBUG:
     CACHE_DIR.mkdir(parents=True, exist_ok=True)

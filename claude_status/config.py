@@ -46,7 +46,7 @@ GREEN = "\033[32m"
 YELLOW = "\033[33m"
 RED = "\033[31m"
 BOLD = "\033[1m"
-DIM = "\033[2m"
+DIM = "\033[38;5;249m"
 RESET = "\033[0m"
 
 # Debug logging

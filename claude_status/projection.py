@@ -21,7 +21,6 @@ from .config import CACHE_DIR
 SESSION_RATE_WEIGHT = 0.6
 HIST_RATE_WEIGHT = 0.4
 DEFAULT_ACTIVITY_PROB = 0.3
-PROJECTION_CAP = 110.0
 MAX_IDLE_GAP_MIN = 30
 TREND_SHORT_SEC = 600   # 10 min
 TREND_LONG_SEC = 1800   # 30 min
@@ -190,7 +189,7 @@ def project_end_of_window(
     for minutes, prob in _walk_hours(now, resets_at, hourly_profile):
         projected += effective_rate * minutes * prob
 
-    return min(projected, PROJECTION_CAP)
+    return projected
 
 
 def project_linear(
@@ -206,7 +205,7 @@ def project_linear(
         return current_pct
     now = time.time()
     remaining_min = max(0, (resets_at - now) / 60)
-    return min(current_pct + rate * remaining_min, PROJECTION_CAP)
+    return current_pct + rate * remaining_min
 
 
 def time_to_threshold(

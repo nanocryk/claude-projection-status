@@ -137,7 +137,7 @@ def _format_window(
         parts = [f"{DIM}{label}:{RESET}{_colored_pct(pct)}"]
         if projected is not None:
             proj_color = _fg_for_proj(projected, proj_warn, proj_crit)
-            proj_str = "100" if projected > 100 else f"{projected:.0f}"
+            proj_str = f"{projected:.0f}"
             parts.append(f"{DIM}\u2192{RESET}{proj_color}{proj_str}{RESET}")
         return "".join(parts)
 
@@ -154,7 +154,7 @@ def _format_window(
     if projected is not None:
         proj_color = _fg_for_proj(projected, proj_warn, proj_crit)
         cpfx = _confidence_prefix(confidence)
-        proj_str = "100%" if projected > 100 else f"{f'{projected:.0f}%':>4}"
+        proj_str = f"{f'{projected:.0f}%':>4}"
         parts.append(f"{DIM}~>{RESET}{proj_color}{cpfx}{proj_str}{RESET}")
     elif proj_eta:
         parts.append(f"{DIM}~>{f'{proj_eta}':>4}{RESET}")

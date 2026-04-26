@@ -34,6 +34,7 @@ from .storage import (
     prune_old,
     record_sample,
 )
+from .threshold import latest_used_pct
 
 
 def _parse_stdin() -> dict[str, Any]:
@@ -221,7 +222,34 @@ def _print_summary() -> None:
     db.close()
 
 
+def _check_threshold(argv: list[str]) -> int:
+    """Print latest used_pct if it crosses --threshold, else nothing.
+
+    Used by Stop hooks to decide whether to force a handoff. Always exits 0
+    on success (crossed or not); non-zero only on real errors.
+    """
+    import argparse
+    p = argparse.ArgumentParser(prog="claude-status check-threshold")
+    p.add_argument("--session-id", required=True)
+    p.add_argument("--window", required=True, help="window_type, e.g. '5h' or '7d'")
+    p.add_argument("--threshold", required=True, type=float, help="percentage, 0-100")
+    args = p.parse_args(argv)
+
+    db = open_db()
+    try:
+        pct = latest_used_pct(db, args.window, args.session_id)
+    finally:
+        db.close()
+
+    if pct is not None and pct >= args.threshold:
+        print(f"{pct:.1f}")
+    return 0
+
+
 def main() -> None:
+    if len(sys.argv) >= 2 and sys.argv[1] == "check-threshold":
+        sys.exit(_check_threshold(sys.argv[2:]))
+
     if "--summary" in sys.argv:
         _print_summary()
         return

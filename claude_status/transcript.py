@@ -19,10 +19,16 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from pathlib import Path
 from typing import Optional
 
 PROJECTS_ROOT = Path.home() / ".claude" / "projects"
+
+# Trailing user messages newer than this are assumed to be genuinely in-flight
+# (Claude actively processing). Older ones are treated as a cancelled/stalled
+# turn so idle falls back to the prior assistant yield.
+STALE_TRAILING_USER_SEC = 30.0
 
 # Render order for known families; unknown families append after, sorted.
 FAMILY_ORDER = ("o", "s", "h")
@@ -164,6 +170,17 @@ def session_mix_string(
     return format_mix(model_token_shares(session_id, cwd, projects_root))
 
 
+def _parse_iso_ts(ts: object) -> Optional[float]:
+    """Parse the transcript's ISO-8601 ``...Z`` timestamps to unix seconds."""
+    if not isinstance(ts, str):
+        return None
+    try:
+        from datetime import datetime
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
 def last_main_assistant_ts(
     session_id: str,
     cwd: str,
@@ -171,16 +188,21 @@ def last_main_assistant_ts(
 ) -> Optional[float]:
     """Unix timestamp of when the conversation last yielded back to user input.
 
-    Returns a timestamp only when the *latest* main-conversation line
-    (non-sidechain ``user`` or ``assistant``) is an assistant turn that
-    finished without a pending tool call (``message.stop_reason`` is not
-    ``"tool_use"``). In that state the model is done responding and the
-    prompt cache is sitting idle, decaying toward TTL.
+    Normal case: the latest main-conversation line (non-sidechain ``user`` or
+    ``assistant``) is an assistant turn that finished without a pending tool
+    call (``message.stop_reason`` is not ``"tool_use"``); return its
+    timestamp. The model is done responding and the prompt cache is decaying
+    toward TTL.
 
-    Returns ``None`` while the conversation is in-flight: latest line is a
-    tool-call assistant turn, a user message (real prompt or tool result)
-    Claude is processing, or any non-yielding state. The server keeps the
-    cache warm during active work, so an idle counter would mislead.
+    Trailing user message: a real prompt or tool result is sitting at the
+    tail. If it's recent (< ``STALE_TRAILING_USER_SEC``), assume Claude is
+    actively processing and return ``None`` (cache stays warm during active
+    work). If it's older, the turn was cancelled/killed before the assistant
+    could write back; fall back to the most recent prior assistant yield so
+    idle anchors on the actual cache decay start.
+
+    Returns ``None`` for tool-call assistant tails (still in-flight) and any
+    transcript with no assistant yield to anchor on.
     """
     pdir = session_dir(cwd, projects_root)
     if pdir is None or not session_id:
@@ -190,6 +212,7 @@ def last_main_assistant_ts(
         return None
 
     last_main: Optional[dict] = None
+    last_yield_ts: Optional[float] = None
     try:
         fh = main.open("r", encoding="utf-8")
     except OSError:
@@ -205,21 +228,29 @@ def last_main_assistant_ts(
             if obj.get("type") not in ("assistant", "user") or obj.get("isSidechain"):
                 continue
             last_main = obj
+            if obj.get("type") == "assistant":
+                msg = obj.get("message")
+                if isinstance(msg, dict) and msg.get("stop_reason") != "tool_use":
+                    parsed = _parse_iso_ts(obj.get("timestamp"))
+                    if parsed is not None:
+                        last_yield_ts = parsed
 
-    if last_main is None or last_main.get("type") != "assistant":
+    if last_main is None:
         return None
-    msg = last_main.get("message")
-    if isinstance(msg, dict) and msg.get("stop_reason") == "tool_use":
+
+    if last_main.get("type") == "assistant":
+        msg = last_main.get("message")
+        if isinstance(msg, dict) and msg.get("stop_reason") == "tool_use":
+            return None
+        return _parse_iso_ts(last_main.get("timestamp"))
+
+    # Trailing user message: in-flight if recent, else fall back to prior yield.
+    user_ts = _parse_iso_ts(last_main.get("timestamp"))
+    if user_ts is None:
         return None
-    last_ts = last_main.get("timestamp")
-    if not isinstance(last_ts, str):
+    if time.time() - user_ts < STALE_TRAILING_USER_SEC:
         return None
-    try:
-        # Transcripts use ISO-8601 with trailing 'Z' (UTC).
-        from datetime import datetime
-        return datetime.fromisoformat(last_ts.replace("Z", "+00:00")).timestamp()
-    except (TypeError, ValueError):
-        return None
+    return last_yield_ts
 
 
 def detected_cache_ttl(

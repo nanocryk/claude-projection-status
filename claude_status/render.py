@@ -238,7 +238,6 @@ def render_status_line(
     model: str,
     ctx_pct: Optional[float],
     ctx_size: int,
-    cache_pct: Optional[float] = None,
     bypass: bool = False,
     trend_5h: Optional[str] = None,
     trend_7d: Optional[str] = None,
@@ -251,16 +250,13 @@ def render_status_line(
     model_shares: Optional[dict[str, float]] = None,
     subagent_count: int = 0,
 ) -> str:
-    # Model segment: "model (ctx hit, mixA mixB sub)" with comma between groups.
+    # Model segment: "model (ctx, mixA mixB sub)" with comma between groups.
     model_clean = re.sub(r"\s*\([^)]*context[^)]*\)", "", model)
 
     ctx_parts: list[str] = []
     if ctx_pct is not None and ctx_size > 0:
         cc = GREEN if ctx_pct < 50 else (YELLOW if ctx_pct < 80 else RED)
         ctx_parts.append(f"{cc}{ctx_pct:.0f}%ctx{RESET}")
-    if cache_pct is not None:
-        hc = GREEN if cache_pct >= 80 else (YELLOW if cache_pct >= 50 else RED)
-        ctx_parts.append(f"{hc}{cache_pct:.0f}%hit{RESET}")
 
     model_parts = _format_model_stats(model_shares, subagent_count)
 

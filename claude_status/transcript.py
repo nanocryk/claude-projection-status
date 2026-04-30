@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from pathlib import Path
 from typing import Optional
 
@@ -35,9 +36,17 @@ _TOKEN_KEYS = (
 )
 
 
+_NON_ALNUM = re.compile(r"[^A-Za-z0-9]")
+
+
 def _encode_cwd(cwd: str) -> str:
-    """Mirror Claude Code's project-dir encoding: replace '/' with '-'."""
-    return cwd.replace("/", "-")
+    """Mirror Claude Code's project-dir encoding.
+
+    Every non-alphanumeric character is replaced with ``-``. So ``/`` and
+    ``_`` and ``.`` all become ``-`` (e.g. ``~/.claude`` → ``-home-user--claude``,
+    ``foo_bar`` → ``foo-bar``).
+    """
+    return _NON_ALNUM.sub("-", cwd)
 
 
 def session_dir(cwd: str, projects_root: Path = PROJECTS_ROOT) -> Optional[Path]:

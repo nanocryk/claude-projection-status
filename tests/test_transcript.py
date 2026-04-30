@@ -29,6 +29,24 @@ class TestEncoding(unittest.TestCase):
     def test_session_dir_empty_cwd(self):
         self.assertIsNone(session_dir("", FIXTURES))
 
+    def test_session_dir_encodes_underscores_and_dots(self):
+        # Claude Code replaces every non-alphanumeric char with '-', not just
+        # '/'. So '_' and '.' must be transformed too, otherwise sessions in
+        # paths like '/home/u/foo_bar' or '/home/u/.claude' silently miss.
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "-home-u-foo-bar").mkdir()
+            self.assertEqual(
+                session_dir("/home/u/foo_bar", root),
+                root / "-home-u-foo-bar",
+            )
+            (root / "-home-u--claude").mkdir()
+            self.assertEqual(
+                session_dir("/home/u/.claude", root),
+                root / "-home-u--claude",
+            )
+
 
 class TestModelTokenShares(unittest.TestCase):
     def test_real_fixture_totals(self):

@@ -196,6 +196,26 @@ def _format_rate_d(rate: Optional[float]) -> str:
     return f"{color}{rate:.0f}%/d{RESET}"
 
 
+def _format_idle(idle_sec: Optional[float]) -> str:
+    """Idle indicator showing time since last main-conversation turn.
+
+    Hidden under 60s (no signal). Color escalates as the prompt-cache TTL
+    (~5 min in current Claude Code) approaches: dim → yellow → red →
+    bold red past TTL when the next prompt likely pays a cold replay.
+    """
+    if idle_sec is None or idle_sec < 60:
+        return ""
+    mins = int(idle_sec // 60)
+    label = f"idle {mins}m"
+    if idle_sec >= 300:
+        return f"{BOLD}{RED}{label}{RESET}"
+    if idle_sec >= 240:
+        return f"{RED}{label}{RESET}"
+    if idle_sec >= 180:
+        return f"{YELLOW}{label}{RESET}"
+    return f"{DIM}{label}{RESET}"
+
+
 def _format_model_stats(
     shares: Optional[dict[str, float]],
     sub_count: int,
@@ -249,6 +269,7 @@ def render_status_line(
     peak_hour: bool = False,
     model_shares: Optional[dict[str, float]] = None,
     subagent_count: int = 0,
+    idle_sec: Optional[float] = None,
 ) -> str:
     # Model segment: "model (ctx, mixA mixB sub)" with comma between groups.
     model_clean = re.sub(r"\s*\([^)]*context[^)]*\)", "", model)
@@ -292,11 +313,15 @@ def render_status_line(
                              prefix_width=prefix_width,
                              proj_warn=85, proj_crit=95)
 
+    idle_str = _format_idle(idle_sec)
+
     if MULTILINE:
         # Line 1: 5h + extras (3-char gap between zones)
         extras_1: list[str] = []
         if peak_hour:
             extras_1.append(f"{YELLOW}peak-h{RESET}")
+        if idle_str:
+            extras_1.append(idle_str)
         if bypass:
             extras_1.append(f"{BOLD}{RED}[BYPASS]{RESET}")
         line1 = seg_5h + ("   " + " ".join(extras_1) if extras_1 else "")
@@ -313,6 +338,9 @@ def render_status_line(
 
     if peak_hour:
         parts.append(f"{YELLOW}peak-h{RESET}")
+
+    if idle_str:
+        parts.append(idle_str)
 
     if bypass:
         parts.append(f"{BOLD}{RED}[BYPASS]{RESET}")

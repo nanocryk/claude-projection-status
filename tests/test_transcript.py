@@ -6,6 +6,7 @@ from pathlib import Path
 from claude_status import transcript
 from claude_status.transcript import (
     format_mix,
+    last_main_assistant_ts,
     model_token_shares,
     session_dir,
     session_mix_string,
@@ -100,6 +101,45 @@ class TestSessionMixString(unittest.TestCase):
         # 2000/2350=85.1, 200/2350=8.5, 150/2350=6.4 → 85%o 9%s 6%h
         out = session_mix_string(SESSION, CWD, FIXTURES)
         self.assertEqual(out, "85%o 9%s 6%h")
+
+
+class TestLastMainAssistantTs(unittest.TestCase):
+    def test_returns_latest_main_assistant_ts(self):
+        # Fixture's last main-assistant line is 2026-04-30T08:15:00Z
+        from datetime import datetime, timezone
+        expected = datetime(2026, 4, 30, 8, 15, 0, tzinfo=timezone.utc).timestamp()
+        ts = last_main_assistant_ts(SESSION, CWD, FIXTURES)
+        self.assertIsNotNone(ts)
+        self.assertAlmostEqual(ts, expected, places=3)
+
+    def test_unknown_session_returns_none(self):
+        self.assertIsNone(last_main_assistant_ts("nope", CWD, FIXTURES))
+
+    def test_skips_sidechain_assistant_lines(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "-x").mkdir()
+            (root / "-x" / "s.jsonl").write_text(
+                '{"type":"assistant","isSidechain":true,"timestamp":"2026-04-30T09:00:00.000Z",'
+                '"message":{"model":"claude-haiku-4-5","usage":{}}}\n'
+                '{"type":"assistant","isSidechain":false,"timestamp":"2026-04-30T08:00:00.000Z",'
+                '"message":{"model":"claude-opus-4-7","usage":{}}}\n'
+            )
+            from datetime import datetime, timezone
+            expected = datetime(2026, 4, 30, 8, 0, 0, tzinfo=timezone.utc).timestamp()
+            ts = last_main_assistant_ts("s", "/x", root)
+            self.assertAlmostEqual(ts, expected, places=3)
+
+    def test_no_assistant_lines_returns_none(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "-x").mkdir()
+            (root / "-x" / "s.jsonl").write_text(
+                '{"type":"user","message":{"role":"user","content":"hi"}}\n'
+            )
+            self.assertIsNone(last_main_assistant_ts("s", "/x", root))
 
 
 class TestSubagentCount(unittest.TestCase):

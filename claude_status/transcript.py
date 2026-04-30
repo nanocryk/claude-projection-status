@@ -155,6 +155,54 @@ def session_mix_string(
     return format_mix(model_token_shares(session_id, cwd, projects_root))
 
 
+def last_main_assistant_ts(
+    session_id: str,
+    cwd: str,
+    projects_root: Path = PROJECTS_ROOT,
+) -> Optional[float]:
+    """Unix timestamp of the most recent main-conversation assistant turn.
+
+    Reads only the main JSONL (not subagents) and returns the parsed
+    ``timestamp`` from the last ``type: "assistant"`` line whose
+    ``isSidechain`` is not true. Returns ``None`` if no such line exists,
+    the file is missing, or the timestamp can't be parsed.
+    """
+    pdir = session_dir(cwd, projects_root)
+    if pdir is None or not session_id:
+        return None
+    main = pdir / f"{session_id}.jsonl"
+    if not main.is_file():
+        return None
+
+    last_ts: Optional[str] = None
+    try:
+        fh = main.open("r", encoding="utf-8")
+    except OSError:
+        return None
+    with fh:
+        for line in fh:
+            if '"type":"assistant"' not in line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if obj.get("type") != "assistant" or obj.get("isSidechain"):
+                continue
+            ts = obj.get("timestamp")
+            if isinstance(ts, str):
+                last_ts = ts
+
+    if last_ts is None:
+        return None
+    try:
+        # Transcripts use ISO-8601 with trailing 'Z' (UTC).
+        from datetime import datetime
+        return datetime.fromisoformat(last_ts.replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
 def subagent_count(
     session_id: str,
     cwd: str,

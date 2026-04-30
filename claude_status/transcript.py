@@ -213,6 +213,55 @@ def last_main_assistant_ts(
         return None
 
 
+def detected_cache_ttl(
+    session_id: str,
+    cwd: str,
+    projects_root: Path = PROJECTS_ROOT,
+) -> Optional[int]:
+    """Return the prompt-cache TTL (seconds) the session is currently using.
+
+    Walks the main JSONL and looks at ``message.usage.cache_creation`` on
+    assistant turns. Anthropic reports cache writes split between
+    ``ephemeral_5m_input_tokens`` and ``ephemeral_1h_input_tokens``; whichever
+    bucket received the most recent write tells us the TTL the client picked.
+    Returns 3600 for 1h, 300 for 5m, or ``None`` if no assistant turn so far
+    committed any tokens to cache (new session, or all calls were pure reads).
+    """
+    pdir = session_dir(cwd, projects_root)
+    if pdir is None or not session_id:
+        return None
+    main = pdir / f"{session_id}.jsonl"
+    if not main.is_file():
+        return None
+
+    last_ttl: Optional[int] = None
+    try:
+        fh = main.open("r", encoding="utf-8")
+    except OSError:
+        return None
+    with fh:
+        for line in fh:
+            if '"cache_creation"' not in line:
+                continue
+            try:
+                obj = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if obj.get("type") != "assistant" or obj.get("isSidechain"):
+                continue
+            cc = (obj.get("message") or {}).get("usage", {}).get("cache_creation")
+            if not isinstance(cc, dict):
+                continue
+            t1h = int(cc.get("ephemeral_1h_input_tokens") or 0)
+            t5m = int(cc.get("ephemeral_5m_input_tokens") or 0)
+            if t1h > 0 and t1h >= t5m:
+                last_ttl = 3600
+            elif t5m > 0:
+                last_ttl = 300
+
+    return last_ttl
+
+
 def subagent_count(
     session_id: str,
     cwd: str,

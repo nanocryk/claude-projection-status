@@ -35,7 +35,12 @@ from .storage import (
     record_sample,
 )
 from .threshold import latest_used_pct
-from .transcript import last_main_assistant_ts, model_token_shares, subagent_count
+from .transcript import (
+    detected_cache_ttl,
+    last_main_assistant_ts,
+    model_token_shares,
+    subagent_count,
+)
 
 
 def _parse_stdin() -> dict[str, Any]:
@@ -278,6 +283,7 @@ def main() -> None:
     model_shares: dict[str, float] = {}
     sub_count = 0
     idle_sec: Optional[float] = None
+    cache_ttl: Optional[int] = None
     if SHOW_MODEL_MIX and session_id:
         try:
             model_shares = model_token_shares(session_id, cwd)
@@ -285,6 +291,7 @@ def main() -> None:
             last_ts = last_main_assistant_ts(session_id, cwd)
             if last_ts is not None:
                 idle_sec = max(0.0, time.time() - last_ts)
+            cache_ttl = detected_cache_ttl(session_id, cwd)
         except Exception:
             log.exception("model mix computation failed")
 
@@ -356,4 +363,5 @@ def main() -> None:
         model_shares=model_shares,
         subagent_count=sub_count,
         idle_sec=idle_sec,
+        cache_ttl=cache_ttl,
     ))

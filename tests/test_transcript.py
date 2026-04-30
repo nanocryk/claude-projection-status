@@ -5,6 +5,7 @@ from pathlib import Path
 
 from claude_status import transcript
 from claude_status.transcript import (
+    detected_cache_ttl,
     format_mix,
     last_main_assistant_ts,
     model_token_shares,
@@ -186,6 +187,49 @@ class TestLastMainAssistantTs(unittest.TestCase):
             expected = datetime(2026, 4, 30, 8, 0, 0, tzinfo=timezone.utc).timestamp()
             ts = last_main_assistant_ts("s", "/x", root)
             self.assertAlmostEqual(ts, expected, places=3)
+
+
+class TestDetectedCacheTtl(unittest.TestCase):
+    def _setup(self, body: str) -> Path:
+        import tempfile
+        td = tempfile.mkdtemp()
+        root = Path(td)
+        (root / "-x").mkdir()
+        (root / "-x" / "s.jsonl").write_text(body)
+        return root
+
+    def test_detects_1h_when_recent_creation_is_1h(self):
+        root = self._setup(
+            '{"type":"assistant","isSidechain":false,"message":{"usage":'
+            '{"cache_creation":{"ephemeral_5m_input_tokens":50,"ephemeral_1h_input_tokens":0}}}}\n'
+            '{"type":"assistant","isSidechain":false,"message":{"usage":'
+            '{"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":133}}}}\n'
+        )
+        self.assertEqual(detected_cache_ttl("s", "/x", root), 3600)
+
+    def test_detects_5m_when_recent_creation_is_5m(self):
+        root = self._setup(
+            '{"type":"assistant","isSidechain":false,"message":{"usage":'
+            '{"cache_creation":{"ephemeral_5m_input_tokens":133,"ephemeral_1h_input_tokens":0}}}}\n'
+        )
+        self.assertEqual(detected_cache_ttl("s", "/x", root), 300)
+
+    def test_returns_none_when_no_creation(self):
+        root = self._setup(
+            '{"type":"assistant","isSidechain":false,"message":{"usage":'
+            '{"cache_read_input_tokens":1000}}}\n'
+        )
+        self.assertIsNone(detected_cache_ttl("s", "/x", root))
+
+    def test_skips_sidechain_creations(self):
+        # Sidechain (subagent) cache writes shouldn't dictate main TTL.
+        root = self._setup(
+            '{"type":"assistant","isSidechain":false,"message":{"usage":'
+            '{"cache_creation":{"ephemeral_5m_input_tokens":133,"ephemeral_1h_input_tokens":0}}}}\n'
+            '{"type":"assistant","isSidechain":true,"message":{"usage":'
+            '{"cache_creation":{"ephemeral_5m_input_tokens":0,"ephemeral_1h_input_tokens":500}}}}\n'
+        )
+        self.assertEqual(detected_cache_ttl("s", "/x", root), 300)
 
 
 class TestSubagentCount(unittest.TestCase):

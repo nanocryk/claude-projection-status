@@ -196,25 +196,45 @@ def _format_rate_d(rate: Optional[float]) -> str:
     return f"{color}{rate:.0f}%/d{RESET}"
 
 
-def _format_idle(idle_sec: Optional[float]) -> str:
-    """Idle indicator showing time since last main-conversation turn.
+def _format_idle(idle_sec: Optional[float], cache_ttl: Optional[int]) -> str:
+    """Idle indicator showing time since the conversation yielded to the user.
 
-    Color escalates as the prompt-cache TTL (~5 min in current Claude Code)
-    approaches: dim → yellow → red → bold red + ``[cache cold]`` past TTL,
-    when the next prompt likely pays a cold replay.
+    Thresholds scale with the detected prompt-cache TTL: dim under 60% of
+    TTL, yellow at 60-80%, red at 80-100%, bold red + ``cold`` past it.
+    A ``[1h TTL]`` / ``[5m TTL]`` tag tells the user which TTL the client
+    is using (silently auto-detected from recent assistant ``cache_creation``
+    splits). When TTL can't be detected, fall back to 5m thresholds and
+    omit the tag.
     """
     if idle_sec is None:
         return ""
     total = max(0, int(idle_sec))
-    mins, secs = divmod(total, 60)
-    label = f"idle {mins}m{secs:02d}s"
-    if idle_sec >= 300:
-        return f"{BOLD}{RED}{label} [cache cold]{RESET}"
-    if idle_sec >= 240:
-        return f"{RED}{label}{RESET}"
-    if idle_sec >= 180:
-        return f"{YELLOW}{label}{RESET}"
-    return f"{DIM}{label}{RESET}"
+    if total >= 3600:
+        h, rem = divmod(total, 3600)
+        m, _ = divmod(rem, 60)
+        time_str = f"{h}h{m:02d}m"
+    else:
+        m, s = divmod(total, 60)
+        time_str = f"{m}m{s:02d}s"
+
+    ttl = cache_ttl if cache_ttl in (300, 3600) else 300
+    ttl_tag = ""
+    if cache_ttl == 3600:
+        ttl_tag = " [1h TTL]"
+    elif cache_ttl == 300:
+        ttl_tag = " [5m TTL]"
+
+    cold_thr = ttl
+    red_thr = ttl * 0.8
+    yellow_thr = ttl * 0.6
+
+    if idle_sec >= cold_thr:
+        return f"{BOLD}{RED}idle {time_str}{ttl_tag} cold{RESET}"
+    if idle_sec >= red_thr:
+        return f"{RED}idle {time_str}{ttl_tag}{RESET}"
+    if idle_sec >= yellow_thr:
+        return f"{YELLOW}idle {time_str}{ttl_tag}{RESET}"
+    return f"{DIM}idle {time_str}{ttl_tag}{RESET}"
 
 
 def _format_model_stats(
@@ -271,6 +291,7 @@ def render_status_line(
     model_shares: Optional[dict[str, float]] = None,
     subagent_count: int = 0,
     idle_sec: Optional[float] = None,
+    cache_ttl: Optional[int] = None,
 ) -> str:
     # Model segment: "model (ctx, mixA mixB sub)" with comma between groups.
     model_clean = re.sub(r"\s*\([^)]*context[^)]*\)", "", model)
@@ -314,7 +335,7 @@ def render_status_line(
                              prefix_width=prefix_width,
                              proj_warn=85, proj_crit=95)
 
-    idle_str = _format_idle(idle_sec)
+    idle_str = _format_idle(idle_sec, cache_ttl)
 
     if MULTILINE:
         # Line 1: 5h + extras (3-char gap between zones)

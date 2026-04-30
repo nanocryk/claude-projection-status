@@ -141,6 +141,52 @@ class TestLastMainAssistantTs(unittest.TestCase):
             )
             self.assertIsNone(last_main_assistant_ts("s", "/x", root))
 
+    def test_returns_none_when_latest_is_tool_use(self):
+        # Conversation in-flight (latest assistant line is mid-tool-call):
+        # cache stays warm, so don't emit an idle timestamp at all.
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "-x").mkdir()
+            (root / "-x" / "s.jsonl").write_text(
+                '{"type":"assistant","isSidechain":false,"timestamp":"2026-04-30T08:00:00.000Z",'
+                '"message":{"model":"claude-opus-4-7","stop_reason":"end_turn","usage":{}}}\n'
+                '{"type":"assistant","isSidechain":false,"timestamp":"2026-04-30T09:00:00.000Z",'
+                '"message":{"model":"claude-opus-4-7","stop_reason":"tool_use","usage":{}}}\n'
+            )
+            self.assertIsNone(last_main_assistant_ts("s", "/x", root))
+
+    def test_returns_none_when_latest_is_user_prompt(self):
+        # User has sent a new prompt; model is processing it. Not idle.
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "-x").mkdir()
+            (root / "-x" / "s.jsonl").write_text(
+                '{"type":"assistant","isSidechain":false,"timestamp":"2026-04-30T08:00:00.000Z",'
+                '"message":{"model":"claude-opus-4-7","stop_reason":"end_turn","usage":{}}}\n'
+                '{"type":"user","isSidechain":false,"timestamp":"2026-04-30T08:30:00.000Z",'
+                '"message":{"role":"user","content":"next prompt"}}\n'
+            )
+            self.assertIsNone(last_main_assistant_ts("s", "/x", root))
+
+    def test_returns_ts_when_latest_is_end_turn(self):
+        # Normal idle state: last main line is a yielding assistant turn.
+        import tempfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "-x").mkdir()
+            (root / "-x" / "s.jsonl").write_text(
+                '{"type":"user","isSidechain":false,"timestamp":"2026-04-30T07:00:00.000Z",'
+                '"message":{"role":"user","content":"hi"}}\n'
+                '{"type":"assistant","isSidechain":false,"timestamp":"2026-04-30T08:00:00.000Z",'
+                '"message":{"model":"claude-opus-4-7","stop_reason":"end_turn","usage":{}}}\n'
+            )
+            from datetime import datetime, timezone
+            expected = datetime(2026, 4, 30, 8, 0, 0, tzinfo=timezone.utc).timestamp()
+            ts = last_main_assistant_ts("s", "/x", root)
+            self.assertAlmostEqual(ts, expected, places=3)
+
 
 class TestSubagentCount(unittest.TestCase):
     def test_counts_agent_files(self):

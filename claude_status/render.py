@@ -199,16 +199,17 @@ def _format_rate_d(rate: Optional[float]) -> str:
 def _format_idle(idle_sec: Optional[float]) -> str:
     """Idle indicator showing time since last main-conversation turn.
 
-    Hidden under 60s (no signal). Color escalates as the prompt-cache TTL
-    (~5 min in current Claude Code) approaches: dim → yellow → red →
-    bold red past TTL when the next prompt likely pays a cold replay.
+    Color escalates as the prompt-cache TTL (~5 min in current Claude Code)
+    approaches: dim → yellow → red → bold red + ``[cache cold]`` past TTL,
+    when the next prompt likely pays a cold replay.
     """
-    if idle_sec is None or idle_sec < 60:
+    if idle_sec is None:
         return ""
-    mins = int(idle_sec // 60)
-    label = f"idle {mins}m"
+    total = max(0, int(idle_sec))
+    mins, secs = divmod(total, 60)
+    label = f"idle {mins}m{secs:02d}s"
     if idle_sec >= 300:
-        return f"{BOLD}{RED}{label}{RESET}"
+        return f"{BOLD}{RED}{label} [cache cold]{RESET}"
     if idle_sec >= 240:
         return f"{RED}{label}{RESET}"
     if idle_sec >= 180:

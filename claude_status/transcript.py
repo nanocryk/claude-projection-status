@@ -160,12 +160,18 @@ def last_main_assistant_ts(
     cwd: str,
     projects_root: Path = PROJECTS_ROOT,
 ) -> Optional[float]:
-    """Unix timestamp of the most recent main-conversation assistant turn.
+    """Unix timestamp of when the conversation last yielded back to user input.
 
-    Reads only the main JSONL (not subagents) and returns the parsed
-    ``timestamp`` from the last ``type: "assistant"`` line whose
-    ``isSidechain`` is not true. Returns ``None`` if no such line exists,
-    the file is missing, or the timestamp can't be parsed.
+    Returns a timestamp only when the *latest* main-conversation line
+    (non-sidechain ``user`` or ``assistant``) is an assistant turn that
+    finished without a pending tool call (``message.stop_reason`` is not
+    ``"tool_use"``). In that state the model is done responding and the
+    prompt cache is sitting idle, decaying toward TTL.
+
+    Returns ``None`` while the conversation is in-flight: latest line is a
+    tool-call assistant turn, a user message (real prompt or tool result)
+    Claude is processing, or any non-yielding state. The server keeps the
+    cache warm during active work, so an idle counter would mislead.
     """
     pdir = session_dir(cwd, projects_root)
     if pdir is None or not session_id:
@@ -174,26 +180,30 @@ def last_main_assistant_ts(
     if not main.is_file():
         return None
 
-    last_ts: Optional[str] = None
+    last_main: Optional[dict] = None
     try:
         fh = main.open("r", encoding="utf-8")
     except OSError:
         return None
     with fh:
         for line in fh:
-            if '"type":"assistant"' not in line:
+            if '"type":"assistant"' not in line and '"type":"user"' not in line:
                 continue
             try:
                 obj = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if obj.get("type") != "assistant" or obj.get("isSidechain"):
+            if obj.get("type") not in ("assistant", "user") or obj.get("isSidechain"):
                 continue
-            ts = obj.get("timestamp")
-            if isinstance(ts, str):
-                last_ts = ts
+            last_main = obj
 
-    if last_ts is None:
+    if last_main is None or last_main.get("type") != "assistant":
+        return None
+    msg = last_main.get("message")
+    if isinstance(msg, dict) and msg.get("stop_reason") == "tool_use":
+        return None
+    last_ts = last_main.get("timestamp")
+    if not isinstance(last_ts, str):
         return None
     try:
         # Transcripts use ISO-8601 with trailing 'Z' (UTC).

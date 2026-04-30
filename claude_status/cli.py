@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Optional
 
-from .config import MIN_SAMPLES_FOR_PROJECTION, MIN_TIMESPAN_FOR_PROJECTION, log
+from .config import MIN_SAMPLES_FOR_PROJECTION, MIN_TIMESPAN_FOR_PROJECTION, SHOW_MODEL_MIX, log
 from .projection import (
     compute_confidence,
     compute_trend,
@@ -35,6 +35,7 @@ from .storage import (
     record_sample,
 )
 from .threshold import latest_used_pct
+from .transcript import model_token_shares, subagent_count
 
 
 def _parse_stdin() -> dict[str, Any]:
@@ -267,6 +268,22 @@ def main() -> None:
 
     session_id = data.get("session_id", "")
 
+    cwd = ""
+    workspace = data.get("workspace") or {}
+    if isinstance(workspace, dict):
+        cwd = workspace.get("current_dir") or workspace.get("project_dir") or ""
+    if not cwd:
+        cwd = data.get("cwd") or os.getcwd()
+
+    model_shares: dict[str, float] = {}
+    sub_count = 0
+    if SHOW_MODEL_MIX and session_id:
+        try:
+            model_shares = model_token_shares(session_id, cwd)
+            sub_count = subagent_count(session_id, cwd)
+        except Exception:
+            log.exception("model mix computation failed")
+
     model_obj = data.get("model", {})
     model_name = (
         model_obj.get("display_name", "")
@@ -343,4 +360,6 @@ def main() -> None:
         rate_per_d=r7d.get("rate"),
         proj_eta=r5h.get("eta"),
         peak_hour=peak_hour,
+        model_shares=model_shares,
+        subagent_count=sub_count,
     ))

@@ -7,6 +7,10 @@ import re
 from typing import Optional
 
 from .config import WARNING_PCT, CRITICAL_PCT, GREEN, BAR_GREEN, YELLOW, RED, BOLD, DIM, RESET, MULTILINE
+from .transcript import FAMILY_ORDER
+
+# Family colors: green = cheap (good to see), yellow = mid, dim = baseline.
+_FAMILY_COLORS = {"o": DIM, "s": YELLOW, "h": GREEN}
 
 _ANSI_RE = re.compile(r"\033\[[0-9;]*m")
 
@@ -192,6 +196,36 @@ def _format_rate_d(rate: Optional[float]) -> str:
     return f"{color}{rate:.0f}%/d{RESET}"
 
 
+def _format_model_stats(
+    shares: Optional[dict[str, float]],
+    sub_count: int,
+) -> list[str]:
+    """Build colored per-family share strings + subagent count.
+
+    Hides shares when only one family is present (no signal). Hides count
+    when zero. Within the family-share group, fixed order: opus, sonnet,
+    haiku, then unknowns in alphabetic order.
+    """
+    parts: list[str] = []
+
+    if shares and len(shares) >= 2:
+        rounded = {fam: int(round(s * 100)) for fam, s in shares.items()}
+        visible = {fam: pct for fam, pct in rounded.items() if pct > 0}
+        if len(visible) >= 2:
+            for fam in FAMILY_ORDER:
+                if fam in visible:
+                    color = _FAMILY_COLORS.get(fam, DIM)
+                    parts.append(f"{color}{visible[fam]}%{fam}{RESET}")
+            for fam in sorted(visible):
+                if fam not in FAMILY_ORDER:
+                    parts.append(f"{DIM}{visible[fam]}%{fam}{RESET}")
+
+    if sub_count > 0:
+        parts.append(f"{DIM}{sub_count}sub{RESET}")
+
+    return parts
+
+
 def render_status_line(
     pct_5h: Optional[float],
     pct_7d: Optional[float],
@@ -214,18 +248,25 @@ def render_status_line(
     rate_per_d: Optional[float] = None,
     proj_eta: Optional[str] = None,
     peak_hour: bool = False,
+    model_shares: Optional[dict[str, float]] = None,
+    subagent_count: int = 0,
 ) -> str:
-    # Model segment with context + cache hit
+    # Model segment: "model (ctx hit, mixA mixB sub)" with comma between groups.
     model_clean = re.sub(r"\s*\([^)]*context[^)]*\)", "", model)
-    info_parts: list[str] = []
+
+    ctx_parts: list[str] = []
     if ctx_pct is not None and ctx_size > 0:
         cc = GREEN if ctx_pct < 50 else (YELLOW if ctx_pct < 80 else RED)
-        info_parts.append(f"{cc}{ctx_pct:.0f}%ctx{RESET}")
+        ctx_parts.append(f"{cc}{ctx_pct:.0f}%ctx{RESET}")
     if cache_pct is not None:
         hc = GREEN if cache_pct >= 80 else (YELLOW if cache_pct >= 50 else RED)
-        info_parts.append(f"{hc}{cache_pct:.0f}%hit{RESET}")
-    if info_parts:
-        model_seg = f"{model_clean} ({' '.join(info_parts)})"
+        ctx_parts.append(f"{hc}{cache_pct:.0f}%hit{RESET}")
+
+    model_parts = _format_model_stats(model_shares, subagent_count)
+
+    groups = [g for g in (" ".join(ctx_parts), " ".join(model_parts)) if g]
+    if groups:
+        model_seg = f"{model_clean} ({', '.join(groups)})"
     else:
         model_seg = model_clean
 

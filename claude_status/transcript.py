@@ -25,10 +25,11 @@ from typing import Optional
 
 PROJECTS_ROOT = Path.home() / ".claude" / "projects"
 
-# Trailing user messages newer than this are assumed to be genuinely in-flight
-# (Claude actively processing). Older ones are treated as a cancelled/stalled
-# turn so idle falls back to the prior assistant yield.
-STALE_TRAILING_USER_SEC = 30.0
+# Trailing non-yield lines newer than this are assumed to be genuinely in-flight
+# (model thinking, tool running). Older ones are treated as stalled (cancelled,
+# permission prompt, AskUserQuestion, long-running tool) so idle anchors on
+# the actual cache decay start.
+STALE_TRAILING_SEC = 30.0
 
 # Render order for known families; unknown families append after, sorted.
 FAMILY_ORDER = ("o", "s", "h")
@@ -195,14 +196,18 @@ def last_main_assistant_ts(
     toward TTL.
 
     Trailing user message: a real prompt or tool result is sitting at the
-    tail. If it's recent (< ``STALE_TRAILING_USER_SEC``), assume Claude is
-    actively processing and return ``None`` (cache stays warm during active
-    work). If it's older, the turn was cancelled/killed before the assistant
-    could write back; fall back to the most recent prior assistant yield so
-    idle anchors on the actual cache decay start.
+    tail. If it's recent (< ``STALE_TRAILING_SEC``), assume Claude is
+    actively processing and return ``None``. If it's older, the turn was
+    cancelled/killed before the assistant could write back; fall back to the
+    most recent prior assistant yield.
 
-    Returns ``None`` for tool-call assistant tails (still in-flight) and any
-    transcript with no assistant yield to anchor on.
+    Trailing tool_use assistant: the assistant emitted a tool call but no
+    result has been written back. Same staleness rule: <30s means the tool
+    is running or about to be approved (cache stays warm). Older means
+    stalled on a permission prompt, AskUserQuestion, or long-running tool;
+    cache is decaying either way, so anchor idle on the tool_use timestamp.
+
+    Returns ``None`` for transcripts with nothing to anchor on.
     """
     pdir = session_dir(cwd, projects_root)
     if pdir is None or not session_id:
@@ -241,14 +246,19 @@ def last_main_assistant_ts(
     if last_main.get("type") == "assistant":
         msg = last_main.get("message")
         if isinstance(msg, dict) and msg.get("stop_reason") == "tool_use":
-            return None
+            tool_ts = _parse_iso_ts(last_main.get("timestamp"))
+            if tool_ts is None:
+                return None
+            if time.time() - tool_ts < STALE_TRAILING_SEC:
+                return None
+            return tool_ts
         return _parse_iso_ts(last_main.get("timestamp"))
 
     # Trailing user message: in-flight if recent, else fall back to prior yield.
     user_ts = _parse_iso_ts(last_main.get("timestamp"))
     if user_ts is None:
         return None
-    if time.time() - user_ts < STALE_TRAILING_USER_SEC:
+    if time.time() - user_ts < STALE_TRAILING_SEC:
         return None
     return last_yield_ts
 

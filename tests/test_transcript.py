@@ -160,10 +160,12 @@ class TestLastMainAssistantTs(unittest.TestCase):
             )
             self.assertIsNone(last_main_assistant_ts("s", "/x", root))
 
-    def test_returns_none_when_latest_is_tool_use(self):
-        # Conversation in-flight (latest assistant line is mid-tool-call):
-        # cache stays warm, so don't emit an idle timestamp at all.
+    def test_returns_none_when_trailing_tool_use_is_fresh(self):
+        # Fresh trailing tool_use: tool likely running or about to be approved,
+        # cache stays warm, no idle to report.
         import tempfile
+        from datetime import datetime, timezone
+        from unittest import mock
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
             (root / "-x").mkdir()
@@ -173,10 +175,34 @@ class TestLastMainAssistantTs(unittest.TestCase):
                 '{"type":"assistant","isSidechain":false,"timestamp":"2026-04-30T09:00:00.000Z",'
                 '"message":{"model":"claude-opus-4-7","stop_reason":"tool_use","usage":{}}}\n'
             )
-            self.assertIsNone(last_main_assistant_ts("s", "/x", root))
+            now = datetime(2026, 4, 30, 9, 0, 5, tzinfo=timezone.utc).timestamp()
+            with mock.patch.object(transcript.time, "time", return_value=now):
+                self.assertIsNone(last_main_assistant_ts("s", "/x", root))
+
+    def test_returns_tool_use_ts_when_trailing_tool_use_is_stale(self):
+        # Stale trailing tool_use: stalled on permission prompt /
+        # AskUserQuestion / long-running tool. Cache is decaying from the
+        # tool_use turn, so anchor idle on its timestamp.
+        import tempfile
+        from datetime import datetime, timezone
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "-x").mkdir()
+            (root / "-x" / "s.jsonl").write_text(
+                '{"type":"assistant","isSidechain":false,"timestamp":"2026-04-30T08:00:00.000Z",'
+                '"message":{"model":"claude-opus-4-7","stop_reason":"end_turn","usage":{}}}\n'
+                '{"type":"assistant","isSidechain":false,"timestamp":"2026-04-30T09:00:00.000Z",'
+                '"message":{"model":"claude-opus-4-7","stop_reason":"tool_use","usage":{}}}\n'
+            )
+            now = datetime(2026, 4, 30, 9, 1, 0, tzinfo=timezone.utc).timestamp()
+            expected = datetime(2026, 4, 30, 9, 0, 0, tzinfo=timezone.utc).timestamp()
+            with mock.patch.object(transcript.time, "time", return_value=now):
+                ts = last_main_assistant_ts("s", "/x", root)
+            self.assertAlmostEqual(ts, expected, places=3)
 
     def test_returns_none_when_trailing_user_is_fresh(self):
-        # Fresh trailing user prompt (< STALE_TRAILING_USER_SEC): model is
+        # Fresh trailing user prompt (< STALE_TRAILING_SEC): model is
         # actively processing, cache stays warm, no idle to report.
         import tempfile
         from datetime import datetime, timezone
@@ -195,7 +221,7 @@ class TestLastMainAssistantTs(unittest.TestCase):
                 self.assertIsNone(last_main_assistant_ts("s", "/x", root))
 
     def test_falls_back_to_prior_yield_when_trailing_user_is_stale(self):
-        # Stale trailing user (>= STALE_TRAILING_USER_SEC since submission):
+        # Stale trailing user (>= STALE_TRAILING_SEC since submission):
         # turn was cancelled/killed before the assistant wrote back. Anchor
         # idle on the most recent prior assistant yield.
         import tempfile

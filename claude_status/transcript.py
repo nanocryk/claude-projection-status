@@ -48,9 +48,9 @@ _NON_ALNUM = re.compile(r"[^A-Za-z0-9]")
 def _encode_cwd(cwd: str) -> str:
     """Mirror Claude Code's project-dir encoding.
 
-    Every non-alphanumeric character is replaced with ``-``. So ``/`` and
-    ``_`` and ``.`` all become ``-`` (e.g. ``~/.claude`` → ``-home-user--claude``,
-    ``foo_bar`` → ``foo-bar``).
+    Every non-alphanumeric character is replaced with ``-``. So ``/``,
+    ``_`` and ``.`` all become ``-`` (e.g. ``~/.claude`` becomes
+    ``-home-user--claude``; ``foo_bar`` becomes ``foo-bar``).
     """
     return _NON_ALNUM.sub("-", cwd)
 

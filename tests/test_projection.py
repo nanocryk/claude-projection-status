@@ -75,11 +75,15 @@ class TestProjectEndOfWindow(unittest.TestCase):
         self.assertIsNotNone(proj)
         self.assertAlmostEqual(proj, 50.0, delta=0.1)
 
-    def test_caps_at_110(self):
+    def test_uncapped_above_100(self):
+        # 90% now, 2h remaining, rate=1.0%/min, fully active → ~210%.
+        # Cap was removed in 4654b23 to surface how far over budget we trend.
         resets = time.time() + 7200
         profile = {h: 1.0 for h in range(24)}
         proj = project_end_of_window(90.0, resets, 1.0, profile, None)
-        self.assertLessEqual(proj, 110.0)
+        self.assertIsNotNone(proj)
+        self.assertGreater(proj, 100.0)
+        self.assertAlmostEqual(proj, 210.0, delta=1.0)
 
     def test_expired_window(self):
         proj = project_end_of_window(80.0, time.time() - 10, 0.5, {}, None)

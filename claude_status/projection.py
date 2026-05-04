@@ -210,47 +210,36 @@ def project_linear(
 
 def time_to_threshold(
     current_pct: float,
+    projected_pct: Optional[float],
     resets_at: float,
-    session_rate: Optional[float],
-    hourly_profile: dict[int, float],
-    hist_rate: Optional[float],
     threshold: float = 100.0,
 ) -> Optional[str]:
-    """Estimate time until usage hits threshold. Returns formatted string or None."""
-    now = time.time()
-    if resets_at - now <= 0:
+    """Format time-to-threshold derived from the projected end-of-window value.
+
+    Both numbers come from the same projection line, so the returned deadline
+    is consistent with the displayed ``proj``: ``None`` when ``proj`` won't
+    cross ``threshold`` before reset, otherwise the in-window crossing time.
+    """
+    if projected_pct is None or projected_pct < threshold:
         return None
-
-    effective_rate = _blend_rate(session_rate, hist_rate)
-    if effective_rate is None:
+    if projected_pct <= current_pct:
         return None
-
-    projected = current_pct
-    elapsed_sec = 0.0
-
-    for minutes, prob in _walk_hours(now, resets_at, hourly_profile):
-        chunk_increase = effective_rate * minutes * prob
-
-        if projected + chunk_increase >= threshold:
-            needed = threshold - projected
-            if effective_rate * prob > 0:
-                mins_needed = needed / (effective_rate * prob)
-                secs_from_now = elapsed_sec + mins_needed * 60
-                if secs_from_now < 60:
-                    return "<1m"
-                total_min = int(secs_from_now / 60)
-                if total_min >= 1440:
-                    d = total_min // 1440
-                    h = (total_min % 1440) // 60
-                    return f"{d}d{h:02d}h"
-                if total_min >= 60:
-                    return f"{total_min // 60}h{total_min % 60:02d}m"
-                return f"{total_min}m"
-
-        projected += chunk_increase
-        elapsed_sec += minutes * 60
-
-    return None  # won't hit threshold before window resets
+    remaining_min = (resets_at - time.time()) / 60
+    if remaining_min <= 0:
+        return None
+    mins = remaining_min * (threshold - current_pct) / (projected_pct - current_pct)
+    if mins <= 0:
+        return None
+    total_min = int(mins)
+    if total_min < 1:
+        return "<1m"
+    if total_min >= 1440:
+        d = total_min // 1440
+        h = (total_min % 1440) // 60
+        return f"{d}d{h:02d}h"
+    if total_min >= 60:
+        return f"{total_min // 60}h{total_min % 60:02d}m"
+    return f"{total_min}m"
 
 
 # --- Trend & confidence ---

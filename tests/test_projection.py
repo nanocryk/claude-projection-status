@@ -2,7 +2,9 @@
 
 import time
 import unittest
+from unittest import mock
 
+from claude_status import projection
 from claude_status.projection import (
     compute_confidence,
     compute_trend,
@@ -91,20 +93,32 @@ class TestProjectEndOfWindow(unittest.TestCase):
 
 
 class TestTimeToThreshold(unittest.TestCase):
-    def test_wont_reach(self):
-        resets = time.time() + 3600
-        profile = {h: 1.0 for h in range(24)}
-        # 10% now, rate=0.01%/min, won't reach 100 in 1h
-        result = time_to_threshold(10.0, resets, 0.01, profile, None)
-        self.assertIsNone(result)
+    def test_proj_below_threshold(self):
+        # Smoothed projection below 100% → no deadline.
+        self.assertIsNone(time_to_threshold(10.0, 50.0, time.time() + 3600))
+
+    def test_proj_none(self):
+        self.assertIsNone(time_to_threshold(10.0, None, time.time() + 3600))
+
+    def test_already_at_threshold(self):
+        # Already over → no deadline, even if proj is higher still.
+        self.assertIsNone(time_to_threshold(100.0, 110.0, time.time() + 3600))
 
     def test_will_reach(self):
-        resets = time.time() + 7200
-        profile = {h: 1.0 for h in range(24)}
-        # 80% now, rate=0.5%/min, will reach 100 in ~40min
-        result = time_to_threshold(80.0, resets, 0.5, profile, None)
-        self.assertIsNotNone(result)
-        self.assertIn("m", result)
+        # 80% now, projected 110% over 2h → crosses 100% at 2/3 of the window.
+        # (100-80)/(110-80) * 120min = 80min → "1h20m"
+        with mock.patch.object(projection.time, "time", return_value=1_000_000.0):
+            result = time_to_threshold(80.0, 110.0, 1_000_000.0 + 7200)
+        self.assertEqual(result, "1h20m")
+
+    def test_proj_at_threshold_returns_reset_time(self):
+        # proj == threshold → crossing time is exactly at reset.
+        with mock.patch.object(projection.time, "time", return_value=1_000_000.0):
+            result = time_to_threshold(50.0, 100.0, 1_000_000.0 + 3600)
+        self.assertEqual(result, "1h00m")
+
+    def test_window_expired(self):
+        self.assertIsNone(time_to_threshold(80.0, 110.0, time.time() - 10))
 
 
 class TestComputeTrend(unittest.TestCase):

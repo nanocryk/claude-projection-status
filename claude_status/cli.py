@@ -103,26 +103,6 @@ def _compute_confidence(db, wtype: str, samples: list[tuple[float, float]],
     )
 
 
-def _time_to_100_linear(pct: float, resets: float, rate_per_min: Optional[float]) -> Optional[str]:
-    """Time to 100% using simple linear rate. Used for 7d (rate includes idle)."""
-    if rate_per_min is None or rate_per_min <= 0:
-        return None
-    remaining_pct = 100 - pct
-    mins = remaining_pct / rate_per_min
-    if mins * 60 > (resets - time.time()):
-        return None
-    total_min = int(mins)
-    if total_min < 1:
-        return "<1m"
-    if total_min >= 1440:
-        d = total_min // 1440
-        h = (total_min % 1440) // 60
-        return f"{d}d{h:02d}h"
-    if total_min >= 60:
-        return f"{total_min // 60}h{total_min % 60:02d}m"
-    return f"{total_min}m"
-
-
 def _project_5h(db, pct: float, resets: float,
                 hourly_profile: dict[int, float]) -> dict[str, Any]:
     """Compute 5h projection using active-rate + hourly activity profile."""
@@ -140,8 +120,7 @@ def _project_5h(db, pct: float, resets: float,
         if raw is not None:
             result["proj"] = smooth_projection("5h", raw)
             result["conf"] = _compute_confidence(db, "5h", samples, hourly_profile)
-            if result["proj"] > 80:
-                result["t100"] = time_to_threshold(pct, resets, rate, hourly_profile, hist_rate)
+            result["t100"] = time_to_threshold(pct, result["proj"], resets)
             log.debug("5h: rate=%.4f%%/min proj=%.1f%% conf=%s samples=%d",
                       rate or 0, result["proj"], result["conf"], len(samples))
 
@@ -171,8 +150,7 @@ def _project_7d(db, pct: float, resets: float,
         if raw is not None:
             result["proj"] = smooth_projection("7d", raw)
             result["conf"] = _compute_confidence(db, "7d", samples, hourly_profile)
-            if result["proj"] > 80:
-                result["t100"] = _time_to_100_linear(pct, resets, rate_min)
+            result["t100"] = time_to_threshold(pct, result["proj"], resets)
             log.debug("7d: rate=%.4f%%/min proj=%.1f%% conf=%s samples=%d",
                       rate_min or 0, result["proj"], result["conf"], len(samples))
 

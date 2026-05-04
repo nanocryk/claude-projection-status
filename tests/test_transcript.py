@@ -220,10 +220,10 @@ class TestLastMainAssistantTs(unittest.TestCase):
             with mock.patch.object(transcript.time, "time", return_value=now):
                 self.assertIsNone(last_main_assistant_ts("s", "/x", root))
 
-    def test_falls_back_to_prior_yield_when_trailing_user_is_stale(self):
+    def test_falls_back_to_prior_assistant_when_trailing_user_is_stale(self):
         # Stale trailing user (>= STALE_TRAILING_SEC since submission):
         # turn was cancelled/killed before the assistant wrote back. Anchor
-        # idle on the most recent prior assistant yield.
+        # idle on the most recent prior assistant message.
         import tempfile
         from datetime import datetime, timezone
         from unittest import mock
@@ -242,9 +242,10 @@ class TestLastMainAssistantTs(unittest.TestCase):
                 ts = last_main_assistant_ts("s", "/x", root)
             self.assertAlmostEqual(ts, expected, places=3)
 
-    def test_returns_none_when_trailing_user_is_stale_but_no_prior_yield(self):
-        # Stale trailing user, but the only prior assistant turn was a tool_use
-        # (or there are none). Nothing to anchor on → None.
+    def test_falls_back_to_tool_use_assistant_when_trailing_user_is_stale(self):
+        # Stale trailing user after a tool_use chain (no end_turn yield in
+        # history). Cache was last touched by the tool_use API call, so
+        # anchor on its timestamp rather than returning None.
         import tempfile
         from datetime import datetime, timezone
         from unittest import mock
@@ -258,8 +259,34 @@ class TestLastMainAssistantTs(unittest.TestCase):
                 '"message":{"role":"user","content":[{"type":"tool_result"}]}}\n'
             )
             now = datetime(2026, 4, 30, 8, 31, 0, tzinfo=timezone.utc).timestamp()
+            expected = datetime(2026, 4, 30, 8, 0, 0, tzinfo=timezone.utc).timestamp()
             with mock.patch.object(transcript.time, "time", return_value=now):
-                self.assertIsNone(last_main_assistant_ts("s", "/x", root))
+                ts = last_main_assistant_ts("s", "/x", root)
+            self.assertAlmostEqual(ts, expected, places=3)
+
+    def test_falls_back_to_latest_assistant_not_oldest_yield(self):
+        # Bug regression: when an old end_turn yield is followed by a more
+        # recent tool_use chain and then a stale user prompt, the anchor
+        # must be the latest assistant message (tool_use), not the older yield.
+        import tempfile
+        from datetime import datetime, timezone
+        from unittest import mock
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            (root / "-x").mkdir()
+            (root / "-x" / "s.jsonl").write_text(
+                '{"type":"assistant","isSidechain":false,"timestamp":"2026-04-30T07:00:00.000Z",'
+                '"message":{"model":"claude-opus-4-7","stop_reason":"end_turn","usage":{}}}\n'
+                '{"type":"assistant","isSidechain":false,"timestamp":"2026-04-30T08:25:00.000Z",'
+                '"message":{"model":"claude-opus-4-7","stop_reason":"tool_use","usage":{}}}\n'
+                '{"type":"user","isSidechain":false,"timestamp":"2026-04-30T08:28:00.000Z",'
+                '"message":{"role":"user","content":"new prompt"}}\n'
+            )
+            now = datetime(2026, 4, 30, 8, 30, 0, tzinfo=timezone.utc).timestamp()
+            expected = datetime(2026, 4, 30, 8, 25, 0, tzinfo=timezone.utc).timestamp()
+            with mock.patch.object(transcript.time, "time", return_value=now):
+                ts = last_main_assistant_ts("s", "/x", root)
+            self.assertAlmostEqual(ts, expected, places=3)
 
     def test_returns_ts_when_latest_is_end_turn(self):
         # Normal idle state: last main line is a yielding assistant turn.

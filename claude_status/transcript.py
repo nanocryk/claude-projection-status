@@ -198,8 +198,10 @@ def last_main_assistant_ts(
     Trailing user message: a real prompt or tool result is sitting at the
     tail. If it's recent (< ``STALE_TRAILING_SEC``), assume Claude is
     actively processing and return ``None``. If it's older, the turn was
-    cancelled/killed before the assistant could write back; fall back to the
-    most recent prior assistant yield.
+    cancelled/killed before the assistant could write back; fall back to
+    the most recent prior assistant message (any stop_reason). Tool_use
+    turns also touch the cache, so they're valid anchors even when no
+    final ``end_turn`` yield exists in the recent history.
 
     Trailing tool_use assistant: the assistant emitted a tool call but no
     result has been written back. Same staleness rule: <30s means the tool
@@ -217,7 +219,7 @@ def last_main_assistant_ts(
         return None
 
     last_main: Optional[dict] = None
-    last_yield_ts: Optional[float] = None
+    last_assistant_ts: Optional[float] = None
     try:
         fh = main.open("r", encoding="utf-8")
     except OSError:
@@ -234,11 +236,9 @@ def last_main_assistant_ts(
                 continue
             last_main = obj
             if obj.get("type") == "assistant":
-                msg = obj.get("message")
-                if isinstance(msg, dict) and msg.get("stop_reason") != "tool_use":
-                    parsed = _parse_iso_ts(obj.get("timestamp"))
-                    if parsed is not None:
-                        last_yield_ts = parsed
+                parsed = _parse_iso_ts(obj.get("timestamp"))
+                if parsed is not None:
+                    last_assistant_ts = parsed
 
     if last_main is None:
         return None
@@ -254,13 +254,15 @@ def last_main_assistant_ts(
             return tool_ts
         return _parse_iso_ts(last_main.get("timestamp"))
 
-    # Trailing user message: in-flight if recent, else fall back to prior yield.
+    # Trailing user message: in-flight if recent, else anchor on the most
+    # recent prior assistant message (cache decay starts at the last API call,
+    # whether end_turn or tool_use).
     user_ts = _parse_iso_ts(last_main.get("timestamp"))
     if user_ts is None:
         return None
     if time.time() - user_ts < STALE_TRAILING_SEC:
         return None
-    return last_yield_ts
+    return last_assistant_ts
 
 
 def detected_cache_ttl(

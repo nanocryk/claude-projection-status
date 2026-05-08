@@ -111,6 +111,9 @@ def prune_old(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+_STALE_DROP_THRESHOLD = 10.0
+
+
 def get_window_samples(
     conn: sqlite3.Connection,
     window_type: str,
@@ -120,6 +123,12 @@ def get_window_samples(
 
     When multiple sessions report for the same window, we take the MAX pct
     per timestamp bucket (30-second buckets) to merge concurrent session reports.
+
+    Trims samples preceding the last large downward step. Cold-started Claude
+    Code sessions sometimes pipe a stale rate_limits snapshot (the previous
+    session's last value) before self-correcting on a later refresh. Without
+    trimming, the cached high lingers as the oldest sample in the 24h window
+    and forces rate_per_day to clamp at 0.
     """
     rows = conn.execute(
         "SELECT CAST(timestamp/30 AS INTEGER)*30 as ts_bucket, MAX(used_pct) "
@@ -128,7 +137,11 @@ def get_window_samples(
         "GROUP BY ts_bucket ORDER BY ts_bucket",
         (window_type, resets_at),
     ).fetchall()
-    return rows
+    last_reset = 0
+    for i in range(1, len(rows)):
+        if rows[i][1] < rows[i - 1][1] - _STALE_DROP_THRESHOLD:
+            last_reset = i
+    return rows[last_reset:]
 
 
 def get_hourly_activity_profile(

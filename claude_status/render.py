@@ -97,7 +97,7 @@ def _confidence_prefix(conf: Optional[str]) -> str:
         return "~"
     if conf == "medium":
         return "\u2248"  # ≈
-    return " "
+    return ""
 
 
 def _visible_len(s: str) -> int:
@@ -132,8 +132,8 @@ def _format_window(
             parts.append(f"{DIM}\u2192{RESET}{proj_color}{proj_str}{RESET}")
         return "".join(parts)
 
-    # Full mode: [cooldown] label:[bar]pct% ~>proj trend rate !time
-    prefix = f"{DIM}[{cooldown}]{RESET} {DIM}{label}:{RESET}"
+    # Full mode: 🕒 cooldown label: bar pct% ⇒proj trend rate ⏰time
+    prefix = f"{DIM}🕒 {cooldown}/{label}{RESET}"
     if prefix_width > 0:
         pad = prefix_width - _visible_len(prefix)
         if pad > 0:
@@ -145,10 +145,10 @@ def _format_window(
     if projected is not None:
         proj_color = _fg_for_proj(projected, proj_warn, proj_crit)
         cpfx = _confidence_prefix(confidence)
-        proj_str = f"{f'{projected:.0f}%':>4}"
-        parts.append(f"{DIM}~>{RESET}{proj_color}{cpfx}{proj_str}{RESET}")
+        inner = f"{cpfx}{projected:.0f}%"
+        parts.append(f"{DIM}⇒{RESET} {proj_color}{inner:>5}{RESET}")
     elif proj_eta:
-        parts.append(f"{DIM}~>{f'{proj_eta}':>4}{RESET}")
+        parts.append(f"{DIM}⇒ {proj_eta:>5}{RESET}")
 
     arrow = _trend_arrow(trend)
     if arrow:
@@ -158,7 +158,7 @@ def _format_window(
         parts.append(rate_str)
 
     if time_to_100:
-        parts.append(f"{BOLD}{RED}!{time_to_100}{RESET}")
+        parts.append(f"{BOLD}{RED}⏰ {time_to_100}{RESET}")
 
     return " ".join(parts)
 
@@ -308,8 +308,8 @@ def render_status_line(
     # Compute aligned prefix width for bar alignment
     prefix_width = 0
     if MULTILINE:
-        pfx_5h = f"[{cooldown_5h}] 5h:"
-        pfx_7d = f"[{cooldown_7d}] 7d:"
+        pfx_5h = f"🕒 {cooldown_5h}/5h"
+        pfx_7d = f"🕒 {cooldown_7d}/7d"
         prefix_width = max(len(pfx_5h), len(pfx_7d))
 
     seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h,

@@ -28,7 +28,6 @@ from .storage import (
     get_historical_rates,
     get_hourly_activity_profile,
     get_window_samples,
-    is_peak_hour,
     open_db,
     prune_old,
     record_sample,
@@ -286,7 +285,6 @@ def main() -> None:
     # Record & project
     r5h: dict[str, Any] = {}
     r7d: dict[str, Any] = {}
-    peak_hour = False
 
     try:
         db = open_db()
@@ -308,9 +306,6 @@ def main() -> None:
 
         if pct_7d is not None and resets_7d is not None:
             r7d = _project_7d(db, pct_7d, resets_7d, hourly_profile)
-
-        current_hour = datetime.now(timezone.utc).hour
-        peak_hour = is_peak_hour(db, current_hour, weekday)
 
         db.close()
     except Exception:
@@ -336,7 +331,6 @@ def main() -> None:
         rate_per_h=r5h.get("rate"),
         rate_per_d=r7d.get("rate"),
         proj_eta=r5h.get("eta"),
-        peak_hour=peak_hour,
         model_shares=model_shares,
         subagent_count=sub_count,
         idle_sec=idle_sec,

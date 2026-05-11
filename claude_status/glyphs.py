@@ -28,15 +28,10 @@ PROJ_ARROW = "⇒"   # ⇒ double rightwards arrow
 DEADLINE = "⏰"     # ⏰ alarm clock emoji
 TREND_COMPACT = "→"  # → (used in COMPACT mode for projection)
 
-# Confidence markers
-CONF_LOW = "~"
-CONF_MED = "≈"     # ≈
-CONF_HIGH = ""
-
 # Idle / peak markers
 IDLE = "💤"     # 💤 ZZZ
-COLD = "❄️"   # ❄ + VS16 (snowflake)
-PEAK = "🔥"     # 🔥 fire
+COLD = "🥶"     # 🥶 freezing face
+BEE = "🐝"     # 🐝 subagent indicator
 
 # Non-breaking space: used for line indentation that must survive
 # Claude Code's per-line leading-whitespace strip.

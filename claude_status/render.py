@@ -10,7 +10,7 @@ from typing import Optional
 from .config import WARNING_PCT, CRITICAL_PCT, GREEN, YELLOW, RED, COLD_BLUE, BOLD, DIM, RESET, MULTILINE
 from .glyphs import (
     FILL, PROJ, EMPTY, SPARK_LEVELS, FG_WHITE, NBSP,
-    CALENDAR, COLD, IDLE, PEAK, clock_glyph,
+    CALENDAR, COLD, IDLE, BEE, clock_glyph,
 )
 from .transcript import FAMILY_ORDER
 
@@ -128,15 +128,6 @@ def _build_sparkline(
     return out
 
 
-def _confidence_prefix(conf: Optional[str]) -> str:
-    """Prefix for projected value based on confidence."""
-    if conf == "low":
-        return "~"
-    if conf == "medium":
-        return "\u2248"  # ≈
-    return ""
-
-
 def _visible_len(s: str) -> int:
     """Length of string after stripping ANSI escape codes and zero-width VS16."""
     return len(_ANSI_RE.sub("", s).replace("️", ""))
@@ -186,9 +177,7 @@ def _format_window(
 
     if projected is not None:
         proj_color = _fg_for_proj(projected, proj_warn, proj_crit)
-        cpfx = _confidence_prefix(confidence)
-        inner = f"{cpfx}{projected:.0f}%"
-        parts.append(f"{DIM}⇒{RESET} {proj_color}{inner:>5}{RESET}")
+        parts.append(f"{DIM}⇒{RESET} {proj_color}{f'{projected:.0f}%':>4}{RESET}")
     elif proj_eta:
         parts.append(f"{DIM}⇒ {proj_eta:>5}{RESET}")
 
@@ -261,24 +250,31 @@ def _format_idle(idle_sec: Optional[float], cache_ttl: Optional[int]) -> str:
     yellow_thr = ttl * 0.6
 
     if idle_sec >= cold_thr:
-        return f"{COLD} {BOLD}{COLD_BLUE}{time_str}{ttl_tag}{RESET}"
-    if idle_sec >= red_thr:
-        return f"{IDLE} {RED}{time_str}{ttl_tag}{RESET}"
-    if idle_sec >= yellow_thr:
-        return f"{IDLE} {YELLOW}{time_str}{ttl_tag}{RESET}"
-    return f"{IDLE} {DIM}{time_str}{ttl_tag}{RESET}"
+        glyph, color, bold = COLD, COLD_BLUE, BOLD
+    elif idle_sec >= red_thr:
+        glyph, color, bold = IDLE, RED, ""
+    elif idle_sec >= yellow_thr:
+        glyph, color, bold = IDLE, YELLOW, ""
+    else:
+        glyph, color, bold = IDLE, DIM, ""
+
+    width = 5
+    filled = min(width, max(1, int(min(1.0, idle_sec / ttl) * width + 0.5))) if idle_sec > 0 else 0
+    bar = f"{color}{FILL * filled}{RESET}{DIM}{EMPTY * (width - filled)}{RESET}"
+    return f"{glyph} {bar} {bold}{color}{time_str}{ttl_tag}{RESET}"
 
 
 def _build_ctx_bar(ctx_pct: float, width: int = 10) -> str:
-    """Single-tone bar for context usage (white filled, dim empty)."""
+    """Single-tone bar for context usage, threshold-coloured."""
     clamped = max(0.0, min(ctx_pct, 100.0))
     filled = int(clamped / 100 * width + 0.5)
     if ctx_pct > 0 and filled == 0:
         filled = 1
     empty = width - filled
+    color = GREEN if ctx_pct < 50 else (YELLOW if ctx_pct < 80 else RED)
     out = ""
     if filled:
-        out += f"{FG_WHITE}{FILL * filled}{RESET}"
+        out += f"{color}{FILL * filled}{RESET}"
     if empty:
         out += f"{DIM}{EMPTY * empty}{RESET}"
     return out
@@ -309,7 +305,7 @@ def _format_model_stats(
                     parts.append(f"{DIM}{visible[fam]}%{fam}{RESET}")
 
     if sub_count > 0:
-        parts.append(f"{DIM}{sub_count}sub{RESET}")
+        parts.append(f"{DIM}{BEE}{sub_count}{RESET}")
 
     return parts
 
@@ -334,7 +330,6 @@ def render_status_line(
     rate_per_h: Optional[float] = None,
     rate_per_d: Optional[float] = None,
     proj_eta: Optional[str] = None,
-    peak_hour: bool = False,
     model_shares: Optional[dict[str, float]] = None,
     subagent_count: int = 0,
     idle_sec: Optional[float] = None,
@@ -389,10 +384,8 @@ def render_status_line(
     idle_str = _format_idle(idle_sec, cache_ttl)
 
     if MULTILINE:
-        # Line 1: 5h + extras (3-char gap between zones)
+        # Line 1: 5h + extras
         extras_1: list[str] = []
-        if peak_hour:
-            extras_1.append(PEAK)
         if idle_str:
             extras_1.append(idle_str)
         if bypass:
@@ -423,9 +416,6 @@ def render_status_line(
     parts = [seg_5h, seg_7d]
 
     parts.append(f"{DIM}{model_seg}{RESET}")
-
-    if peak_hour:
-        parts.append(PEAK)
 
     if idle_str:
         parts.append(idle_str)

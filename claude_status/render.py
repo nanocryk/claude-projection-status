@@ -6,7 +6,7 @@ import os
 import re
 from typing import Optional
 
-from .config import WARNING_PCT, CRITICAL_PCT, GREEN, BAR_GREEN, YELLOW, RED, BOLD, DIM, RESET, MULTILINE
+from .config import WARNING_PCT, CRITICAL_PCT, GREEN, YELLOW, RED, BOLD, DIM, RESET, MULTILINE
 from .transcript import FAMILY_ORDER
 
 # Family colors: green = cheap (good to see), yellow = mid, dim = baseline.
@@ -17,14 +17,10 @@ _ANSI_RE = re.compile(r"\033\[[0-9;]*m")
 COMPACT = os.environ.get("CLAUDE_STATUS_COMPACT", "").lower() in ("1", "true", "yes")
 
 # Bar characters
-FILL = "\u2588"      # █ solid — current usage
-PROJ = "\u2588"      # █ solid — projected additional (color differentiates)
-EMPTY = "\u2500"     # ─ thin line — remaining (visually empty)
+FILL = "\u25b0"      # ▰ black parallelogram — current usage
+PROJ = "\u25b0"      # ▰ black parallelogram — projected additional (color differentiates)
+EMPTY = "\u25b1"     # ▱ white parallelogram — remaining (visually empty)
 
-# Background colors for bar segments
-BG_GREEN = BAR_GREEN
-BG_YELLOW = "\033[43m"
-BG_RED = "\033[41m"
 FG_WHITE = "\033[97m"
 
 
@@ -34,14 +30,6 @@ def _color_for_pct(pct: float) -> str:
     if pct >= WARNING_PCT:
         return YELLOW
     return GREEN
-
-
-def _bg_for_pct(pct: float) -> str:
-    if pct >= CRITICAL_PCT:
-        return BG_RED
-    if pct >= WARNING_PCT:
-        return BG_YELLOW
-    return BG_GREEN
 
 
 def _fg_for_proj(pct: float, warn: float = 75, crit: float = 90) -> str:
@@ -82,15 +70,14 @@ def _build_two_tone_bar(
 
     empty = width - filled - proj_filled
 
-    bg_current = _bg_for_pct(pct)
     fg_proj = _fg_for_proj(projected or pct, proj_warn, proj_crit)
 
     bar = ""
-    bar += f"{bg_current}{FG_WHITE}" + FILL * filled + RESET if filled else ""
+    bar += f"{FG_WHITE}" + FILL * filled + RESET if filled else ""
     bar += f"{fg_proj}" + PROJ * proj_filled + RESET if proj_filled else ""
     bar += f"{DIM}" + EMPTY * empty + RESET if empty else ""
 
-    return f"[{bar}]"
+    return bar
 
 
 def _trend_arrow(trend: Optional[str]) -> str:
@@ -153,7 +140,7 @@ def _format_window(
             prefix += " " * pad
 
     bar = _build_two_tone_bar(pct, projected, proj_warn=proj_warn, proj_crit=proj_crit)
-    parts = [f"{prefix}{bar}{_colored_pct(pct)}"]
+    parts = [f"{prefix} {bar}{_colored_pct(pct)}"]
 
     if projected is not None:
         proj_color = _fg_for_proj(projected, proj_warn, proj_crit)

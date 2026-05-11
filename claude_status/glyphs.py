@@ -32,6 +32,7 @@ TREND_COMPACT = "→"  # → (used in COMPACT mode for projection)
 IDLE = "💤"     # 💤 ZZZ
 COLD = "🥶"     # 🥶 freezing face
 BEE = "🐝"     # 🐝 subagent indicator
+WAVE = "👋"     # 👋 long-idle nudge
 
 # Non-breaking space: used for line indentation that must survive
 # Claude Code's per-line leading-whitespace strip.

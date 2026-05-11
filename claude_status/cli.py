@@ -38,6 +38,7 @@ from .transcript import (
     last_main_assistant_ts,
     model_token_shares,
     subagent_count,
+    subagent_token_share,
 )
 
 
@@ -258,12 +259,14 @@ def main() -> None:
 
     model_shares: dict[str, float] = {}
     sub_count = 0
+    sub_share = 0.0
     idle_sec: Optional[float] = None
     cache_ttl: Optional[int] = None
     if SHOW_MODEL_MIX and session_id:
         try:
             model_shares = model_token_shares(session_id, cwd)
             sub_count = subagent_count(session_id, cwd)
+            sub_share = subagent_token_share(session_id, cwd)
             last_ts = last_main_assistant_ts(session_id, cwd)
             if last_ts is not None:
                 idle_sec = max(0.0, time.time() - last_ts)
@@ -333,6 +336,7 @@ def main() -> None:
         proj_eta=r5h.get("eta"),
         model_shares=model_shares,
         subagent_count=sub_count,
+        subagent_share=sub_share,
         idle_sec=idle_sec,
         cache_ttl=cache_ttl,
     ))

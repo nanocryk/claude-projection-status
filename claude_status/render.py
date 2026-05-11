@@ -10,7 +10,7 @@ from typing import Optional
 from .config import WARNING_PCT, CRITICAL_PCT, GREEN, YELLOW, RED, COLD_BLUE, BOLD, DIM, RESET, MULTILINE
 from .glyphs import (
     FILL, PROJ, EMPTY, SPARK_LEVELS, FG_WHITE, NBSP,
-    CALENDAR, COLD, IDLE, BEE, clock_glyph,
+    CALENDAR, COLD, IDLE, BEE, WAVE, clock_glyph,
 )
 from .transcript import FAMILY_ORDER
 
@@ -177,7 +177,9 @@ def _format_window(
 
     if projected is not None:
         proj_color = _fg_for_proj(projected, proj_warn, proj_crit)
-        parts.append(f"{DIM}⇒{RESET} {proj_color}{f'{projected:.0f}%':>4}{RESET}")
+        # Confidence saturates the projection: high=bold, medium=normal, low=dim
+        conf_attr = BOLD if confidence == "high" else ("\033[2m" if confidence == "low" else "")
+        parts.append(f"{DIM}⇒{RESET} {conf_attr}{proj_color}{f'{projected:.0f}%':>4}{RESET}")
     elif proj_eta:
         parts.append(f"{DIM}⇒ {proj_eta:>5}{RESET}")
 
@@ -258,10 +260,14 @@ def _format_idle(idle_sec: Optional[float], cache_ttl: Optional[int]) -> str:
     else:
         glyph, color, bold = IDLE, DIM, ""
 
+    # Inverted bar: cells = time remaining before cold. Drains as idle grows.
     width = 5
-    filled = min(width, max(1, int(min(1.0, idle_sec / ttl) * width + 0.5))) if idle_sec > 0 else 0
-    bar = f"{color}{FILL * filled}{RESET}{DIM}{EMPTY * (width - filled)}{RESET}"
-    return f"{glyph} {bar} {bold}{color}{time_str}{ttl_tag}{RESET}"
+    remaining = max(0.0, 1.0 - idle_sec / ttl)
+    filled = max(0, int(remaining * width + 0.5)) if idle_sec < ttl else 0
+    empty = width - filled
+    bar = (f"{color}{FILL * filled}{RESET}" if filled else "") + (f"{DIM}{EMPTY * empty}{RESET}" if empty else "")
+    nudge = f" {WAVE}" if idle_sec >= 1800 else ""
+    return f"{glyph} {bar} {bold}{color}{time_str}{ttl_tag}{RESET}{nudge}"
 
 
 def _build_ctx_bar(ctx_pct: float, width: int = 10) -> str:
@@ -283,8 +289,9 @@ def _build_ctx_bar(ctx_pct: float, width: int = 10) -> str:
 def _format_model_stats(
     shares: Optional[dict[str, float]],
     sub_count: int,
+    sub_share: float = 0.0,
 ) -> list[str]:
-    """Build colored per-family share strings + subagent count.
+    """Build colored per-family share strings + subagent count and token share.
 
     Hides shares when only one family is present (no signal). Hides count
     when zero. Within the family-share group, fixed order: opus, sonnet,
@@ -305,7 +312,9 @@ def _format_model_stats(
                     parts.append(f"{DIM}{visible[fam]}%{fam}{RESET}")
 
     if sub_count > 0:
-        parts.append(f"{DIM}{BEE}{sub_count}{RESET}")
+        share_pct = int(round(sub_share * 100))
+        suffix = f" {share_pct}%" if share_pct > 0 else ""
+        parts.append(f"{DIM}{BEE}{sub_count}{suffix}{RESET}")
 
     return parts
 
@@ -332,6 +341,7 @@ def render_status_line(
     proj_eta: Optional[str] = None,
     model_shares: Optional[dict[str, float]] = None,
     subagent_count: int = 0,
+    subagent_share: float = 0.0,
     idle_sec: Optional[float] = None,
     cache_ttl: Optional[int] = None,
 ) -> str:
@@ -343,7 +353,7 @@ def render_status_line(
         cc = GREEN if ctx_pct < 50 else (YELLOW if ctx_pct < 80 else RED)
         ctx_parts.append(f"{cc}{ctx_pct:.0f}%ctx{RESET}")
 
-    model_parts = _format_model_stats(model_shares, subagent_count)
+    model_parts = _format_model_stats(model_shares, subagent_count, subagent_share)
 
     groups = [g for g in (" ".join(ctx_parts), " ".join(model_parts)) if g]
     if groups:
@@ -405,7 +415,7 @@ def render_status_line(
         if ctx_pct is not None and ctx_size > 0:
             cc = GREEN if ctx_pct < 50 else (YELLOW if ctx_pct < 80 else RED)
             l3_parts.append(f"{_build_ctx_bar(ctx_pct)} {cc}{ctx_pct:.0f}%ctx{RESET}")
-        model_text = _format_model_stats(model_shares, subagent_count)
+        model_text = _format_model_stats(model_shares, subagent_count, subagent_share)
         if model_text:
             l3_parts.append(" ".join(model_text))
         line3 = head + (" " * pad) + "  ".join(l3_parts)

@@ -137,6 +137,41 @@ def model_token_shares(
     return {fam: cnt / grand for fam, cnt in totals.items()}
 
 
+def subagent_token_share(
+    session_id: str,
+    cwd: str,
+    projects_root: Path = PROJECTS_ROOT,
+) -> float:
+    """Fraction (0..1) of session tokens spent in subagent files."""
+    pdir = session_dir(cwd, projects_root)
+    if pdir is None or not session_id:
+        return 0.0
+
+    main_totals: dict[str, int] = {}
+    sub_totals: dict[str, int] = {}
+
+    main = pdir / f"{session_id}.jsonl"
+    if main.is_file():
+        _accumulate(main, main_totals)
+
+    sub_dir = pdir / session_id / "subagents"
+    if sub_dir.is_dir():
+        try:
+            entries = sorted(sub_dir.iterdir())
+        except OSError:
+            entries = []
+        for entry in entries:
+            if entry.suffix == ".jsonl" and entry.name.startswith("agent-"):
+                _accumulate(entry, sub_totals)
+
+    main_total = sum(main_totals.values())
+    sub_total = sum(sub_totals.values())
+    grand = main_total + sub_total
+    if grand <= 0:
+        return 0.0
+    return sub_total / grand
+
+
 def format_mix(shares: dict[str, float]) -> str:
     """Format shares as ``60%o 30%s 10%h``.
 

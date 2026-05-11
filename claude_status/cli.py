@@ -13,7 +13,6 @@ from typing import Any, Optional
 from .config import MIN_SAMPLES_FOR_PROJECTION, MIN_TIMESPAN_FOR_PROJECTION, SHOW_MODEL_MIX, log
 from .projection import (
     compute_confidence,
-    compute_trend,
     current_session_rate,
     historical_median_rate,
     overall_rate,
@@ -106,11 +105,11 @@ def _compute_confidence(db, wtype: str, samples: list[tuple[float, float]],
 def _project_5h(db, pct: float, resets: float,
                 hourly_profile: dict[int, float]) -> dict[str, Any]:
     """Compute 5h projection using active-rate + hourly activity profile."""
-    result: dict[str, Any] = {"proj": None, "conf": None, "trend": None,
+    result: dict[str, Any] = {"proj": None, "conf": None, "samples": None,
                                "rate": None, "t100": None, "eta": None}
 
     samples = get_window_samples(db, "5h", resets)
-    result["trend"] = compute_trend(samples)
+    result["samples"] = samples
     result["rate"] = rate_per_hour(samples)
 
     if _has_enough_data(samples):
@@ -137,11 +136,11 @@ def _project_5h(db, pct: float, resets: float,
 def _project_7d(db, pct: float, resets: float,
                 hourly_profile: dict[int, float]) -> dict[str, Any]:
     """Compute 7d projection using overall rate (includes idle time)."""
-    result: dict[str, Any] = {"proj": None, "conf": None, "trend": None,
+    result: dict[str, Any] = {"proj": None, "conf": None, "samples": None,
                                "rate": None, "t100": None}
 
     samples = get_window_samples(db, "7d", resets)
-    result["trend"] = compute_trend(samples)
+    result["samples"] = samples
     result["rate"] = rate_per_day(samples)
 
     if _has_enough_data(samples):
@@ -330,8 +329,8 @@ def main() -> None:
         ctx_pct=ctx_pct,
         ctx_size=ctx_size,
         bypass=_is_bypass(),
-        trend_5h=r5h.get("trend"),
-        trend_7d=r7d.get("trend"),
+        samples_5h=r5h.get("samples"),
+        samples_7d=r7d.get("samples"),
         conf_5h=r5h.get("conf"),
         conf_7d=r7d.get("conf"),
         rate_per_h=r5h.get("rate"),

@@ -80,15 +80,56 @@ def _build_two_tone_bar(
     return bar
 
 
-def _trend_arrow(trend: Optional[str]) -> str:
-    """Format trend indicator."""
-    if trend == "up":
-        return f"{RED}\u2191{RESET}"       # ↑
-    if trend == "down":
-        return f"{GREEN}\u2193{RESET}"     # ↓
-    if trend == "stable":
-        return f"{DIM}\u2192{RESET}"       # →
-    return " "
+_SPARK_LEVELS = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588"  # ▁▂▃▄▅▆▇█
+
+
+def _build_sparkline(
+    samples: list[tuple[float, float]],
+    lookback_sec: float,
+    buckets: int = 8,
+    peak_floor: float = 0.5,
+) -> str:
+    """Sparkline of usage rate (Δpct per bucket) over the lookback window.
+
+    No-data buckets render as a dim ▁ baseline.
+    """
+    if not samples or len(samples) < 2:
+        return ""
+    now = samples[-1][0]
+    start = now - lookback_sec
+    bucket_dur = lookback_sec / buckets
+    earliest_t, earliest_p = samples[0]
+
+    deltas: list[Optional[float]] = []
+    for i in range(buckets):
+        b_start = start + i * bucket_dur
+        b_end = b_start + bucket_dur
+        if b_end < earliest_t:
+            deltas.append(None)
+            continue
+        before = next((p for t, p in reversed(samples) if t <= b_start), earliest_p)
+        after = next((p for t, p in reversed(samples) if t <= b_end), earliest_p)
+        deltas.append(max(0.0, after - before))
+
+    valid = [d for d in deltas if d is not None]
+    if not valid:
+        return ""
+    peak = max(max(valid), peak_floor)
+
+    out = ""
+    for d in deltas:
+        if d is None:
+            out += f"\033[38;5;238m▁{RESET}"
+        else:
+            lv = min(6, int(d / peak * 6 + 0.5))
+            if lv >= 5:
+                color = RED
+            elif lv >= 3:
+                color = YELLOW
+            else:
+                color = "\033[38;5;252m"
+            out += f"{color}{_SPARK_LEVELS[lv]}{RESET}"
+    return out
 
 
 def _confidence_prefix(conf: Optional[str]) -> str:
@@ -101,8 +142,8 @@ def _confidence_prefix(conf: Optional[str]) -> str:
 
 
 def _visible_len(s: str) -> int:
-    """Length of string after stripping ANSI escape codes."""
-    return len(_ANSI_RE.sub("", s))
+    """Length of string after stripping ANSI escape codes and zero-width VS16."""
+    return len(_ANSI_RE.sub("", s).replace("️", ""))
 
 
 def _format_window(
@@ -111,7 +152,8 @@ def _format_window(
     projected: Optional[float],
     cooldown: str,
     time_to_100: Optional[str],
-    trend: Optional[str] = None,
+    samples: Optional[list[tuple[float, float]]] = None,
+    lookback_sec: float = 5 * 3600,
     confidence: Optional[str] = None,
     rate_str: str = "",
     prefix_width: int = 0,
@@ -132,8 +174,9 @@ def _format_window(
             parts.append(f"{DIM}\u2192{RESET}{proj_color}{proj_str}{RESET}")
         return "".join(parts)
 
-    # Full mode: 🕒 cooldown label: bar pct% ⇒proj trend rate ⏰time
-    prefix = f"{DIM}🕒 {cooldown}/{label}{RESET}"
+    # Full mode: glyph cooldown/label bar pct% ⇒proj sparkline rate ⏰time
+    glyph = "🗓️" if label == "7d" else "🕒"
+    prefix = f"{DIM}{glyph} {cooldown}/{label}{RESET}"
     if prefix_width > 0:
         pad = prefix_width - _visible_len(prefix)
         if pad > 0:
@@ -150,9 +193,10 @@ def _format_window(
     elif proj_eta:
         parts.append(f"{DIM}⇒ {proj_eta:>5}{RESET}")
 
-    arrow = _trend_arrow(trend)
-    if arrow:
-        parts.append(arrow)
+    if samples:
+        spark = _build_sparkline(samples, lookback_sec)
+        if spark:
+            parts.append(spark)
 
     if rate_str:
         parts.append(rate_str)
@@ -267,8 +311,8 @@ def render_status_line(
     ctx_pct: Optional[float],
     ctx_size: int,
     bypass: bool = False,
-    trend_5h: Optional[str] = None,
-    trend_7d: Optional[str] = None,
+    samples_5h: Optional[list[tuple[float, float]]] = None,
+    samples_7d: Optional[list[tuple[float, float]]] = None,
     conf_5h: Optional[str] = None,
     conf_7d: Optional[str] = None,
     rate_per_h: Optional[float] = None,
@@ -298,10 +342,12 @@ def render_status_line(
 
     if COMPACT:
         seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h,
-                                 trend_5h, conf_5h, _format_rate_h(rate_per_h),
+                                 samples_5h, 5 * 3600,
+                                 conf_5h, _format_rate_h(rate_per_h),
                                  proj_warn=75, proj_crit=90)
         seg_7d = _format_window("7d", pct_7d, proj_7d, cooldown_7d, time_to_100_7d,
-                                 trend_7d, conf_7d, _format_rate_d(rate_per_d),
+                                 samples_7d, 24 * 3600,
+                                 conf_7d, _format_rate_d(rate_per_d),
                                  proj_warn=85, proj_crit=95)
         return f"{seg_5h} {seg_7d} {DIM}{model_clean}{RESET}"
 
@@ -309,16 +355,18 @@ def render_status_line(
     prefix_width = 0
     if MULTILINE:
         pfx_5h = f"🕒 {cooldown_5h}/5h"
-        pfx_7d = f"🕒 {cooldown_7d}/7d"
-        prefix_width = max(len(pfx_5h), len(pfx_7d))
+        pfx_7d = f"🗓️ {cooldown_7d}/7d"
+        prefix_width = max(_visible_len(pfx_5h), _visible_len(pfx_7d))
 
     seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h,
-                             trend_5h, conf_5h, _format_rate_h(rate_per_h),
+                             samples_5h, 5 * 3600,
+                             conf_5h, _format_rate_h(rate_per_h),
                              prefix_width=prefix_width,
                              proj_eta=proj_eta if proj_5h is None else None,
                              proj_warn=75, proj_crit=90)
     seg_7d = _format_window("7d", pct_7d, proj_7d, cooldown_7d, time_to_100_7d,
-                             trend_7d, conf_7d, _format_rate_d(rate_per_d),
+                             samples_7d, 24 * 3600,
+                             conf_7d, _format_rate_d(rate_per_d),
                              prefix_width=prefix_width,
                              proj_warn=85, proj_crit=95)
 

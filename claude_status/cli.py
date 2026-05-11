@@ -7,6 +7,10 @@ import os
 import random
 import sys
 import time
+
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stdin.reconfigure(encoding="utf-8")
 from datetime import datetime, timezone
 from typing import Any, Optional
 

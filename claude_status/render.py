@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import os
 import re
+from datetime import datetime
 from typing import Optional
 
-from .config import WARNING_PCT, CRITICAL_PCT, GREEN, YELLOW, RED, BOLD, DIM, RESET, MULTILINE
+from .config import WARNING_PCT, CRITICAL_PCT, GREEN, YELLOW, RED, COLD_BLUE, BOLD, DIM, RESET, MULTILINE
+from .glyphs import (
+    FILL, PROJ, EMPTY, SPARK_LEVELS, FG_WHITE, NBSP,
+    CALENDAR, COLD, IDLE, PEAK, clock_glyph,
+)
 from .transcript import FAMILY_ORDER
 
 # Family colors: green = cheap (good to see), yellow = mid, dim = baseline.
@@ -16,12 +21,6 @@ _ANSI_RE = re.compile(r"\033\[[0-9;]*m")
 
 COMPACT = os.environ.get("CLAUDE_STATUS_COMPACT", "").lower() in ("1", "true", "yes")
 
-# Bar characters
-FILL = "\u25b0"      # ▰ black parallelogram — current usage
-PROJ = "\u25b0"      # ▰ black parallelogram — projected additional (color differentiates)
-EMPTY = "\u25b1"     # ▱ white parallelogram — remaining (visually empty)
-
-FG_WHITE = "\033[97m"
 
 
 def _color_for_pct(pct: float) -> str:
@@ -80,9 +79,6 @@ def _build_two_tone_bar(
     return bar
 
 
-_SPARK_LEVELS = "\u2581\u2582\u2583\u2584\u2585\u2586\u2587\u2588"  # ▁▂▃▄▅▆▇█
-
-
 def _build_sparkline(
     samples: list[tuple[float, float]],
     lookback_sec: float,
@@ -128,7 +124,7 @@ def _build_sparkline(
                 color = YELLOW
             else:
                 color = "\033[38;5;252m"
-            out += f"{color}{_SPARK_LEVELS[lv]}{RESET}"
+            out += f"{color}{SPARK_LEVELS[lv]}{RESET}"
     return out
 
 
@@ -175,7 +171,10 @@ def _format_window(
         return "".join(parts)
 
     # Full mode: glyph cooldown/label bar pct% ⇒proj sparkline rate ⏰time
-    glyph = "🗓️" if label == "7d" else "🕒"
+    if label == "7d":
+        glyph = CALENDAR
+    else:
+        glyph = clock_glyph(datetime.now().hour)
     prefix = f"{DIM}{glyph} {cooldown}/{label}{RESET}"
     if prefix_width > 0:
         pad = prefix_width - _visible_len(prefix)
@@ -244,28 +243,45 @@ def _format_idle(idle_sec: Optional[float], cache_ttl: Optional[int]) -> str:
         h, rem = divmod(total, 3600)
         m, _ = divmod(rem, 60)
         time_str = f"{h}h{m:02d}m"
+    elif total >= 60:
+        m, _ = divmod(total, 60)
+        time_str = f"{m}m"
     else:
-        m, s = divmod(total, 60)
-        time_str = f"{m}m{s:02d}s"
+        time_str = f"{total:02d}s"
 
     ttl = cache_ttl if cache_ttl in (300, 3600) else 300
     ttl_tag = ""
     if cache_ttl == 3600:
-        ttl_tag = " [1h TTL]"
+        ttl_tag = "/1h"
     elif cache_ttl == 300:
-        ttl_tag = " [5m TTL]"
+        ttl_tag = "/5m"
 
     cold_thr = ttl
     red_thr = ttl * 0.8
     yellow_thr = ttl * 0.6
 
     if idle_sec >= cold_thr:
-        return f"{BOLD}{RED}idle {time_str}{ttl_tag} cold{RESET}"
+        return f"{COLD} {BOLD}{COLD_BLUE}{time_str}{ttl_tag}{RESET}"
     if idle_sec >= red_thr:
-        return f"{RED}idle {time_str}{ttl_tag}{RESET}"
+        return f"{IDLE} {RED}{time_str}{ttl_tag}{RESET}"
     if idle_sec >= yellow_thr:
-        return f"{YELLOW}idle {time_str}{ttl_tag}{RESET}"
-    return f"{DIM}idle {time_str}{ttl_tag}{RESET}"
+        return f"{IDLE} {YELLOW}{time_str}{ttl_tag}{RESET}"
+    return f"{IDLE} {DIM}{time_str}{ttl_tag}{RESET}"
+
+
+def _build_ctx_bar(ctx_pct: float, width: int = 10) -> str:
+    """Single-tone bar for context usage (white filled, dim empty)."""
+    clamped = max(0.0, min(ctx_pct, 100.0))
+    filled = int(clamped / 100 * width + 0.5)
+    if ctx_pct > 0 and filled == 0:
+        filled = 1
+    empty = width - filled
+    out = ""
+    if filled:
+        out += f"{FG_WHITE}{FILL * filled}{RESET}"
+    if empty:
+        out += f"{DIM}{EMPTY * empty}{RESET}"
+    return out
 
 
 def _format_model_stats(
@@ -355,7 +371,7 @@ def render_status_line(
     prefix_width = 0
     if MULTILINE:
         pfx_5h = f"🕒 {cooldown_5h}/5h"
-        pfx_7d = f"🗓️ {cooldown_7d}/7d"
+        pfx_7d = f"{CALENDAR} {cooldown_7d}/7d"
         prefix_width = max(_visible_len(pfx_5h), _visible_len(pfx_7d))
 
     seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h,
@@ -376,17 +392,32 @@ def render_status_line(
         # Line 1: 5h + extras (3-char gap between zones)
         extras_1: list[str] = []
         if peak_hour:
-            extras_1.append(f"{YELLOW}peak-h{RESET}")
+            extras_1.append(PEAK)
         if idle_str:
             extras_1.append(idle_str)
         if bypass:
             extras_1.append(f"{BOLD}{RED}[BYPASS]{RESET}")
-        line1 = seg_5h + ("   " + " ".join(extras_1) if extras_1 else "")
+        line1 = seg_5h + (" " + " ".join(extras_1) if extras_1 else "")
 
-        # Line 2: 7d + model info (3-char gap)
-        line2 = seg_7d + "   " + f"{DIM}{model_seg}{RESET}"
+        # Line 2: 7d only
+        line2 = seg_7d
 
-        return line1 + "\n" + line2
+        # Line 3: model name first (left-flush to survive leading-strip),
+        # then pad to align ctx bar with the time bars on lines 1-2. Long
+        # model names push the bar right rather than breaking alignment.
+        head = f"{DIM}{model_clean}{RESET}"
+        target_col = prefix_width + 2  # bar start column (see line 1/2 layout)
+        pad = max(1, target_col - _visible_len(head))
+        l3_parts: list[str] = []
+        if ctx_pct is not None and ctx_size > 0:
+            cc = GREEN if ctx_pct < 50 else (YELLOW if ctx_pct < 80 else RED)
+            l3_parts.append(f"{_build_ctx_bar(ctx_pct)} {cc}{ctx_pct:.0f}%ctx{RESET}")
+        model_text = _format_model_stats(model_shares, subagent_count)
+        if model_text:
+            l3_parts.append(" ".join(model_text))
+        line3 = head + (" " * pad) + "  ".join(l3_parts)
+
+        return line1 + "\n" + line2 + "\n" + line3
 
     # Single-line mode
     parts = [seg_5h, seg_7d]
@@ -394,7 +425,7 @@ def render_status_line(
     parts.append(f"{DIM}{model_seg}{RESET}")
 
     if peak_hour:
-        parts.append(f"{YELLOW}peak-h{RESET}")
+        parts.append(PEAK)
 
     if idle_str:
         parts.append(idle_str)

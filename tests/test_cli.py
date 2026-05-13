@@ -82,6 +82,27 @@ class TestProject7d(unittest.TestCase):
         # And clearly above the starting pct (rate is positive).
         self.assertGreater(r["proj"], 2.0)
 
+    def test_fresh_window_with_history_derates_confidence(self):
+        """A rolling-dominant blend reports lower confidence than the raw score."""
+        now = time.time()
+        current_resets = now + 7 * 86400 - 1800
+        prior_resets = now - 2 * 86400
+
+        # Enough prior data for a confident raw score: 11 samples over 5 days.
+        prior_start = prior_resets - 5 * 86400
+        for i in range(11):
+            self._insert(prior_start + i * (5 * 86400 / 10), i * 2.0, prior_resets)
+
+        # Current window: 30 min of data (rolling-dominant blend, w_cur ~0.02).
+        for i in range(6):
+            self._insert(now - 1800 + i * 360, 1.0 + i * 0.2, current_resets)
+        self.conn.commit()
+
+        r = cli._project_7d(self.conn, 2.0, current_resets, hourly_profile={})
+        # Without deration the raw score may land medium/high; with rolling
+        # weight near zero we expect the floor.
+        self.assertEqual(r["conf"], "low")
+
     def test_mature_window_unchanged_by_blend(self):
         """After 24h of in-window data, the rolling rate has no influence."""
         now = time.time()

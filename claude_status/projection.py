@@ -192,6 +192,27 @@ def project_end_of_window(
     return projected
 
 
+def derate_confidence(conf: str, window_blend_weight: float) -> str:
+    """Drop confidence when the projection leans on cross-window baseline.
+
+    The in-window sample count and timespan that drove the original score
+    describe observation quality, not projection quality: when the blend
+    is rolling-dominant, the projection reflects historical rate more
+    than the user's current trajectory, so the headline number should
+    visually de-emphasise.
+
+    No change when ``window_blend_weight >= 0.75`` (blend is window-dominant).
+    Drop one level at ``>= 0.25``, two levels below that.
+    """
+    levels = ["low", "medium", "high"]
+    if conf not in levels:
+        return conf
+    if window_blend_weight >= 0.75:
+        return conf
+    drop = 1 if window_blend_weight >= 0.25 else 2
+    return levels[max(0, levels.index(conf) - drop)]
+
+
 def blended_rolling_rate(
     window_rate: Optional[float],
     rolling_rate: Optional[float],

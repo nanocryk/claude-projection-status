@@ -10,6 +10,7 @@ from claude_status.projection import (
     compute_confidence,
     compute_trend,
     current_session_rate,
+    derate_confidence,
     historical_median_rate,
     project_end_of_window,
     rate_per_day,
@@ -129,6 +130,30 @@ class TestBlendedRollingRate(unittest.TestCase):
             blended_rolling_rate(2.0, 0.5, 2 * 86400, full_weight_sec=86400),
             2.0,
         )
+
+
+class TestDerateConfidence(unittest.TestCase):
+    def test_window_dominant_no_change(self):
+        self.assertEqual(derate_confidence("high", 0.9), "high")
+        self.assertEqual(derate_confidence("medium", 0.75), "medium")
+
+    def test_mixed_blend_drops_one_level(self):
+        self.assertEqual(derate_confidence("high", 0.5), "medium")
+        self.assertEqual(derate_confidence("medium", 0.3), "low")
+
+    def test_rolling_dominant_drops_two_levels(self):
+        self.assertEqual(derate_confidence("high", 0.1), "low")
+
+    def test_low_is_floor(self):
+        self.assertEqual(derate_confidence("low", 0.0), "low")
+        self.assertEqual(derate_confidence("medium", 0.0), "low")
+
+    def test_pure_rolling_drops_hard(self):
+        # weight=0 covers the window_rate=None fallback case in _project_7d.
+        self.assertEqual(derate_confidence("high", 0.0), "low")
+
+    def test_unknown_passes_through(self):
+        self.assertEqual(derate_confidence("bogus", 0.5), "bogus")
 
 
 class TestTimeToThreshold(unittest.TestCase):

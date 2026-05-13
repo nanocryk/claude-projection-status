@@ -19,6 +19,7 @@ from .projection import (
     blended_rolling_rate,
     compute_confidence,
     current_session_rate,
+    derate_confidence,
     historical_median_rate,
     overall_rate,
     project_end_of_window,
@@ -160,7 +161,12 @@ def _project_7d(db, pct: float, resets: float,
         raw = project_linear(pct, resets, rate_min)
         if raw is not None:
             result["proj"] = smooth_projection("7d", raw)
-            result["conf"] = _compute_confidence(db, "7d", samples, hourly_profile)
+            conf = _compute_confidence(db, "7d", samples, hourly_profile)
+            if rolling_rate is not None:
+                # Pure-rolling fallback gets weight 0; mixed blend uses w_cur.
+                w_cur = min(1.0, age_sec / 86400) if window_rate is not None else 0.0
+                conf = derate_confidence(conf, w_cur)
+            result["conf"] = conf
             result["t100"] = time_to_threshold(pct, result["proj"], resets)
             log.debug("7d: window_rate=%.4f rolling=%.4f blended=%.4f%%/min proj=%.1f%% conf=%s samples=%d",
                       window_rate or 0, rolling_rate or 0, rate_min or 0,

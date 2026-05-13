@@ -208,6 +208,40 @@ def is_peak_hour(
     return hour_deltas.get(hour, 0.0) > overall_avg * 1.2
 
 
+def rolling_window_rate(
+    conn: sqlite3.Connection,
+    window_type: str,
+    lookback_sec: float,
+) -> Optional[float]:
+    """Aggregate %/minute across all ``resets_at`` groups in the trailing period.
+
+    Crosses reset boundaries so that a freshly-started window with only a few
+    minutes of in-window data can still be projected against the user's
+    recent typical rate. Computed as ``sum(delta_pct) / sum(duration_min)``
+    over each observed window in the lookback, which weights longer
+    observations more heavily.
+
+    Returns ``None`` when fewer than 60 cumulative minutes of data exist.
+    """
+    cutoff = time.time() - lookback_sec
+    rows = conn.execute(
+        "SELECT MIN(used_pct), MAX(used_pct), MIN(timestamp), MAX(timestamp) "
+        "FROM usage_samples "
+        "WHERE window_type = ? AND timestamp >= ? "
+        "GROUP BY resets_at "
+        "HAVING MAX(used_pct) > MIN(used_pct) AND MAX(timestamp) > MIN(timestamp)",
+        (window_type, cutoff),
+    ).fetchall()
+    total_pct = 0.0
+    total_min = 0.0
+    for p_min, p_max, t_min, t_max in rows:
+        total_pct += p_max - p_min
+        total_min += (t_max - t_min) / 60.0
+    if total_min < 60:
+        return None
+    return total_pct / total_min
+
+
 def get_historical_rates(
     conn: sqlite3.Connection,
     window_type: Optional[str] = None,

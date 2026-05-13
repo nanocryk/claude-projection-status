@@ -106,6 +106,53 @@ class TestStorage(unittest.TestCase):
         # 5h rate should be higher than 7d rate (5%/2min vs 1%/2min)
         self.assertGreater(rates_5h[0], rates_7d[0])
 
+    def test_rolling_window_rate_crosses_resets(self):
+        """Aggregates across multiple resets_at groups within the lookback."""
+        now = time.time()
+        # Two prior 7d windows, each gaining 10% over 2h (= 0.0833%/min)
+        for window_idx, reset in enumerate([now - 5 * 86400, now - 2 * 86400]):
+            base_ts = reset - 2 * 86400
+            for i in range(13):  # 0..12, 10-minute steps over 2h
+                self.conn.execute(
+                    "INSERT INTO usage_samples (timestamp, window_type, used_pct, resets_at, session_id) "
+                    "VALUES (?,?,?,?,?)",
+                    (base_ts + i * 600, "7d", 10.0 + i * (10.0 / 12), reset, "s1"),
+                )
+        self.conn.commit()
+        rate = storage.rolling_window_rate(self.conn, "7d", 7 * 86400)
+        self.assertIsNotNone(rate)
+        # 20 total pct gained over 240 min observation = ~0.0833 %/min
+        self.assertAlmostEqual(rate, 20.0 / 240.0, delta=0.01)
+
+    def test_rolling_window_rate_filters_lookback(self):
+        """Rows outside the lookback window are excluded."""
+        now = time.time()
+        old = now - 10 * 86400  # outside a 7d lookback
+        for i in range(13):
+            self.conn.execute(
+                "INSERT INTO usage_samples (timestamp, window_type, used_pct, resets_at, session_id) "
+                "VALUES (?,?,?,?,?)",
+                (old + i * 600, "7d", 10.0 + i, old + 86400, "s1"),
+            )
+        self.conn.commit()
+        self.assertIsNone(storage.rolling_window_rate(self.conn, "7d", 7 * 86400))
+
+    def test_rolling_window_rate_insufficient_data(self):
+        """Returns None when <60 cumulative minutes of data."""
+        now = time.time()
+        self.conn.execute(
+            "INSERT INTO usage_samples (timestamp, window_type, used_pct, resets_at, session_id) "
+            "VALUES (?,?,?,?,?)",
+            (now - 60, "7d", 10.0, now + 86400, "s1"),
+        )
+        self.conn.execute(
+            "INSERT INTO usage_samples (timestamp, window_type, used_pct, resets_at, session_id) "
+            "VALUES (?,?,?,?,?)",
+            (now, "7d", 11.0, now + 86400, "s1"),
+        )
+        self.conn.commit()
+        self.assertIsNone(storage.rolling_window_rate(self.conn, "7d", 7 * 86400))
+
 
 if __name__ == "__main__":
     unittest.main()

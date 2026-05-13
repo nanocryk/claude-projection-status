@@ -16,6 +16,7 @@ from typing import Any, Optional
 
 from .config import MIN_SAMPLES_FOR_PROJECTION, MIN_TIMESPAN_FOR_PROJECTION, SHOW_MODEL_MIX, log
 from .projection import (
+    blended_rolling_rate,
     compute_confidence,
     current_session_rate,
     historical_median_rate,
@@ -35,6 +36,7 @@ from .storage import (
     open_db,
     prune_old,
     record_sample,
+    rolling_window_rate,
 )
 from .threshold import latest_used_pct
 from .transcript import (
@@ -148,14 +150,21 @@ def _project_7d(db, pct: float, resets: float,
     result["rate"] = rate_per_day(samples)
 
     if _has_enough_data(samples):
-        rate_min = overall_rate(samples)
+        # Fresh 7d windows have only minutes of data; their raw rate
+        # extrapolates to absurd end-of-window values. Blend with a
+        # cross-window rolling baseline that survives reset boundaries.
+        window_rate = overall_rate(samples)
+        rolling_rate = rolling_window_rate(db, "7d", 7 * 86400)
+        age_sec = samples[-1][0] - samples[0][0]
+        rate_min = blended_rolling_rate(window_rate, rolling_rate, age_sec)
         raw = project_linear(pct, resets, rate_min)
         if raw is not None:
             result["proj"] = smooth_projection("7d", raw)
             result["conf"] = _compute_confidence(db, "7d", samples, hourly_profile)
             result["t100"] = time_to_threshold(pct, result["proj"], resets)
-            log.debug("7d: rate=%.4f%%/min proj=%.1f%% conf=%s samples=%d",
-                      rate_min or 0, result["proj"], result["conf"], len(samples))
+            log.debug("7d: window_rate=%.4f rolling=%.4f blended=%.4f%%/min proj=%.1f%% conf=%s samples=%d",
+                      window_rate or 0, rolling_rate or 0, rate_min or 0,
+                      result["proj"], result["conf"], len(samples))
 
     return result
 

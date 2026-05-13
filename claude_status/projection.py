@@ -192,6 +192,31 @@ def project_end_of_window(
     return projected
 
 
+def blended_rolling_rate(
+    window_rate: Optional[float],
+    rolling_rate: Optional[float],
+    in_window_age_sec: float,
+    full_weight_sec: float = 86400,
+) -> Optional[float]:
+    """Blend current-window rate with a cross-window rolling baseline.
+
+    Weight on ``window_rate`` ramps linearly from 0 at observation start
+    to 1 after ``full_weight_sec`` of in-window data. Stabilises the
+    7d projection at the start of a fresh window: the few minutes of
+    in-window data alone extrapolate to absurd end-of-window values,
+    so we lean on the rolling baseline until the current window has
+    accumulated enough data to stand on its own.
+
+    Falls back to whichever input is non-None when one is missing.
+    """
+    if window_rate is None:
+        return rolling_rate
+    if rolling_rate is None:
+        return window_rate
+    w_cur = min(1.0, max(0.0, in_window_age_sec / full_weight_sec))
+    return w_cur * window_rate + (1.0 - w_cur) * rolling_rate
+
+
 def project_linear(
     current_pct: float,
     resets_at: float,

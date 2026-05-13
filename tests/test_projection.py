@@ -6,6 +6,7 @@ from unittest import mock
 
 from claude_status import projection
 from claude_status.projection import (
+    blended_rolling_rate,
     compute_confidence,
     compute_trend,
     current_session_rate,
@@ -90,6 +91,44 @@ class TestProjectEndOfWindow(unittest.TestCase):
     def test_expired_window(self):
         proj = project_end_of_window(80.0, time.time() - 10, 0.5, {}, None)
         self.assertEqual(proj, 80.0)
+
+
+class TestBlendedRollingRate(unittest.TestCase):
+    def test_both_none(self):
+        self.assertIsNone(blended_rolling_rate(None, None, 3600))
+
+    def test_only_window(self):
+        self.assertEqual(blended_rolling_rate(0.5, None, 3600), 0.5)
+
+    def test_only_rolling(self):
+        self.assertEqual(blended_rolling_rate(None, 0.2, 3600), 0.2)
+
+    def test_age_zero_is_pure_rolling(self):
+        # Fresh window with no in-window time should fully trust rolling.
+        self.assertAlmostEqual(
+            blended_rolling_rate(2.0, 0.5, 0.0, full_weight_sec=86400),
+            0.5,
+        )
+
+    def test_age_full_weight_is_pure_window(self):
+        self.assertAlmostEqual(
+            blended_rolling_rate(2.0, 0.5, 86400, full_weight_sec=86400),
+            2.0,
+        )
+
+    def test_age_half_weight_is_midpoint(self):
+        # 12h in / 24h target → 50/50 blend.
+        self.assertAlmostEqual(
+            blended_rolling_rate(2.0, 0.5, 43200, full_weight_sec=86400),
+            1.25,
+        )
+
+    def test_age_above_full_weight_clamps(self):
+        # 48h in / 24h target → still 100% window.
+        self.assertAlmostEqual(
+            blended_rolling_rate(2.0, 0.5, 2 * 86400, full_weight_sec=86400),
+            2.0,
+        )
 
 
 class TestTimeToThreshold(unittest.TestCase):

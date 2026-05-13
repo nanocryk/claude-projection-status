@@ -26,7 +26,6 @@ def clock_glyph(hour: int) -> str:
 # Inline markers
 PROJ_ARROW = "⇒"   # ⇒ double rightwards arrow
 DEADLINE = "⏰"     # ⏰ alarm clock emoji
-TREND_COMPACT = "→"  # → (used in COMPACT mode for projection)
 
 # Idle / peak markers
 IDLE = "💤"     # 💤 ZZZ

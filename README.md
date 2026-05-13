@@ -88,7 +88,6 @@ Settings are read from `~/.config/claude-projection-status/config.json`, overrid
 
 ```json
 {
-  "multiline": true,
   "warning_pct": 40,
   "critical_pct": 70,
   "retention_days": 14,
@@ -99,7 +98,6 @@ Settings are read from `~/.config/claude-projection-status/config.json`, overrid
 
 | Setting | Env Var | Default | Description |
 |---------|---------|---------|-------------|
-| `multiline` | `CLAUDE_STATUS_MULTILINE` | `false` | Two-line layout (5h + 7d stacked) |
 | `warning_pct` | `CLAUDE_STATUS_WARNING` | `40` | Yellow threshold (%) |
 | `critical_pct` | `CLAUDE_STATUS_CRITICAL` | `70` | Red threshold (%) |
 | `cache_dir` | `CLAUDE_STATUS_CACHE` | `~/.cache/claude-projection-status` | Database and cache location |
@@ -107,33 +105,15 @@ Settings are read from `~/.config/claude-projection-status/config.json`, overrid
 | `min_samples` | `CLAUDE_STATUS_MIN_SAMPLES` | `5` | Minimum samples before projecting |
 | `min_timespan` | `CLAUDE_STATUS_MIN_TIMESPAN` | `600` | Seconds of data needed before projecting |
 | `debug` | `CLAUDE_STATUS_DEBUG` | `false` | Enable debug logging to `debug.log` |
-| *(env only)* | `CLAUDE_STATUS_COMPACT` | `false` | Ultra-compact single-line mode |
 
-## Display Modes
+## Display
 
-### Multiline (recommended)
-
-Two lines with aligned bars, 3-character gap between window data and metadata:
+Three lines with aligned bars: 5h window, 7d window, then model + context/mix:
 
 ```
 [4h32] 5h:[████──────] 5% ~>≈13% → 3%/h
-[6d02] 7d:[██────────] 2% ~>≈ 8% → 4%/d   opus-4 (42%ctx 85%hit)
-```
-
-### Single-line (default)
-
-All segments joined with `|`:
-
-```
-[4h32] 5h:[████──────]5% ~>≈13% → 3%/h | [6d02] 7d:[██────────]2% ~>≈8% → 4%/d | opus-4 (42%ctx 85%hit)
-```
-
-### Compact
-
-Minimal output for narrow terminals:
-
-```
-5h:5%→13 7d:2%→8 opus-4
+[6d02] 7d:[██────────] 2% ~>≈ 8% → 4%/d
+opus-4    [████──────] 42%ctx
 ```
 
 ## Status Elements

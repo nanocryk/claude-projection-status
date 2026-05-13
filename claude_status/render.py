@@ -2,14 +2,13 @@
 
 from __future__ import annotations
 
-import os
 import re
 from datetime import datetime
 from typing import Optional
 
-from .config import WARNING_PCT, CRITICAL_PCT, GREEN, YELLOW, RED, COLD_BLUE, BOLD, DIM, RESET, MULTILINE
+from .config import WARNING_PCT, CRITICAL_PCT, GREEN, YELLOW, RED, COLD_BLUE, BOLD, DIM, RESET
 from .glyphs import (
-    FILL, PROJ, EMPTY, SPARK_LEVELS, FG_WHITE, NBSP,
+    FILL, PROJ, EMPTY, SPARK_LEVELS, FG_WHITE,
     CALENDAR, COLD, IDLE, BEE, WAVE, clock_glyph,
 )
 from .transcript import FAMILY_ORDER
@@ -18,9 +17,6 @@ from .transcript import FAMILY_ORDER
 _FAMILY_COLORS = {"o": DIM, "s": YELLOW, "h": GREEN}
 
 _ANSI_RE = re.compile(r"\033\[[0-9;]*m")
-
-COMPACT = os.environ.get("CLAUDE_STATUS_COMPACT", "").lower() in ("1", "true", "yes")
-
 
 
 def _color_for_pct(pct: float) -> str:
@@ -149,19 +145,9 @@ def _format_window(
     proj_crit: float = 90,
 ) -> str:
     if pct is None:
-        if COMPACT:
-            return f"{DIM}{label}:--{RESET}"
         return f"{DIM}[--] {label}: --%{RESET}"
 
-    if COMPACT:
-        parts = [f"{DIM}{label}:{RESET}{_colored_pct(pct)}"]
-        if projected is not None:
-            proj_color = _fg_for_proj(projected, proj_warn, proj_crit)
-            proj_str = f"{projected:.0f}"
-            parts.append(f"{DIM}\u2192{RESET}{proj_color}{proj_str}{RESET}")
-        return "".join(parts)
-
-    # Full mode: glyph cooldown/label bar pct% ⇒proj sparkline rate ⏰time
+    # glyph cooldown/label bar pct% ⇒proj sparkline rate ⏰time
     if label == "7d":
         glyph = CALENDAR
     else:
@@ -345,39 +331,12 @@ def render_status_line(
     idle_sec: Optional[float] = None,
     cache_ttl: Optional[int] = None,
 ) -> str:
-    # Model segment: "model (ctx, mixA mixB sub)" with comma between groups.
     model_clean = re.sub(r"\s*\([^)]*context[^)]*\)", "", model)
 
-    ctx_parts: list[str] = []
-    if ctx_pct is not None and ctx_size > 0:
-        cc = GREEN if ctx_pct < 50 else (YELLOW if ctx_pct < 80 else RED)
-        ctx_parts.append(f"{cc}{ctx_pct:.0f}%ctx{RESET}")
-
-    model_parts = _format_model_stats(model_shares, subagent_count, subagent_share)
-
-    groups = [g for g in (" ".join(ctx_parts), " ".join(model_parts)) if g]
-    if groups:
-        model_seg = f"{model_clean} ({', '.join(groups)})"
-    else:
-        model_seg = model_clean
-
-    if COMPACT:
-        seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h,
-                                 samples_5h, 5 * 3600,
-                                 conf_5h, _format_rate_h(rate_per_h),
-                                 proj_warn=75, proj_crit=90)
-        seg_7d = _format_window("7d", pct_7d, proj_7d, cooldown_7d, time_to_100_7d,
-                                 samples_7d, 24 * 3600,
-                                 conf_7d, _format_rate_d(rate_per_d),
-                                 proj_warn=85, proj_crit=95)
-        return f"{seg_5h} {seg_7d} {DIM}{model_clean}{RESET}"
-
-    # Compute aligned prefix width for bar alignment
-    prefix_width = 0
-    if MULTILINE:
-        pfx_5h = f"🕒 {cooldown_5h}/5h"
-        pfx_7d = f"{CALENDAR} {cooldown_7d}/7d"
-        prefix_width = max(_visible_len(pfx_5h), _visible_len(pfx_7d))
+    # Aligned prefix width so the bars on lines 1-2 start at the same column.
+    pfx_5h = f"🕒 {cooldown_5h}/5h"
+    pfx_7d = f"{CALENDAR} {cooldown_7d}/7d"
+    prefix_width = max(_visible_len(pfx_5h), _visible_len(pfx_7d))
 
     seg_5h = _format_window("5h", pct_5h, proj_5h, cooldown_5h, time_to_100_5h,
                              samples_5h, 5 * 3600,
@@ -393,44 +352,30 @@ def render_status_line(
 
     idle_str = _format_idle(idle_sec, cache_ttl)
 
-    if MULTILINE:
-        # Line 1: 5h + extras
-        extras_1: list[str] = []
-        if idle_str:
-            extras_1.append(idle_str)
-        if bypass:
-            extras_1.append(f"{BOLD}{RED}[BYPASS]{RESET}")
-        line1 = seg_5h + (" " + " ".join(extras_1) if extras_1 else "")
-
-        # Line 2: 7d only
-        line2 = seg_7d
-
-        # Line 3: model name first (left-flush to survive leading-strip),
-        # then pad to align ctx bar with the time bars on lines 1-2. Long
-        # model names push the bar right rather than breaking alignment.
-        head = f"{DIM}{model_clean}{RESET}"
-        target_col = prefix_width + 2  # bar start column (see line 1/2 layout)
-        pad = max(1, target_col - _visible_len(head))
-        l3_parts: list[str] = []
-        if ctx_pct is not None and ctx_size > 0:
-            cc = GREEN if ctx_pct < 50 else (YELLOW if ctx_pct < 80 else RED)
-            l3_parts.append(f"{_build_ctx_bar(ctx_pct)} {cc}{ctx_pct:.0f}%ctx{RESET}")
-        model_text = _format_model_stats(model_shares, subagent_count, subagent_share)
-        if model_text:
-            l3_parts.append(" ".join(model_text))
-        line3 = head + (" " * pad) + "  ".join(l3_parts)
-
-        return line1 + "\n" + line2 + "\n" + line3
-
-    # Single-line mode
-    parts = [seg_5h, seg_7d]
-
-    parts.append(f"{DIM}{model_seg}{RESET}")
-
+    # Line 1: 5h + extras
+    extras_1: list[str] = []
     if idle_str:
-        parts.append(idle_str)
-
+        extras_1.append(idle_str)
     if bypass:
-        parts.append(f"{BOLD}{RED}[BYPASS]{RESET}")
+        extras_1.append(f"{BOLD}{RED}[BYPASS]{RESET}")
+    line1 = seg_5h + (" " + " ".join(extras_1) if extras_1 else "")
 
-    return f" {DIM}|{RESET} ".join(parts)
+    # Line 2: 7d only
+    line2 = seg_7d
+
+    # Line 3: model name first (left-flush to survive leading-strip),
+    # then pad to align ctx bar with the time bars on lines 1-2. Long
+    # model names push the bar right rather than breaking alignment.
+    head = f"{DIM}{model_clean}{RESET}"
+    target_col = prefix_width + 2  # bar start column (see line 1/2 layout)
+    pad = max(1, target_col - _visible_len(head))
+    l3_parts: list[str] = []
+    if ctx_pct is not None and ctx_size > 0:
+        cc = GREEN if ctx_pct < 50 else (YELLOW if ctx_pct < 80 else RED)
+        l3_parts.append(f"{_build_ctx_bar(ctx_pct)} {cc}{ctx_pct:.0f}%ctx{RESET}")
+    model_text = _format_model_stats(model_shares, subagent_count, subagent_share)
+    if model_text:
+        l3_parts.append(" ".join(model_text))
+    line3 = head + (" " * pad) + "  ".join(l3_parts)
+
+    return line1 + "\n" + line2 + "\n" + line3

@@ -29,8 +29,6 @@ def _get(key: str, env_key: str, default: str) -> str:
 WARNING_PCT = float(_get("warning_pct", "CLAUDE_STATUS_WARNING", "40"))
 CRITICAL_PCT = float(_get("critical_pct", "CLAUDE_STATUS_CRITICAL", "70"))
 
-MULTILINE = _get("multiline", "CLAUDE_STATUS_MULTILINE", "false").lower() in ("1", "true", "yes")
-
 SHOW_MODEL_MIX = _get("show_model_mix", "CLAUDE_STATUS_MODEL_MIX", "true").lower() in ("1", "true", "yes")
 
 CACHE_DIR = Path(_get("cache_dir", "CLAUDE_STATUS_CACHE",

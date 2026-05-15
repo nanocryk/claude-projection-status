@@ -167,7 +167,7 @@ def _format_window(
         conf_attr = BOLD if confidence == "high" else ("\033[2m" if confidence == "low" else "")
         parts.append(f"{DIM}⇒{RESET} {conf_attr}{proj_color}{f'{projected:.0f}%':>4}{RESET}")
     elif proj_eta:
-        parts.append(f"{DIM}⇒ {proj_eta:>5}{RESET}")
+        parts.append(f"{DIM}⇒ {proj_eta:>4}{RESET}")
 
     if samples:
         spark = _build_sparkline(samples, lookback_sec)

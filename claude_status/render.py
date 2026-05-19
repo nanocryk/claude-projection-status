@@ -168,6 +168,10 @@ def _format_window(
         parts.append(f"{DIM}⇒{RESET} {conf_attr}{proj_color}{f'{projected:.0f}%':>4}{RESET}")
     elif proj_eta:
         parts.append(f"{DIM}⇒ {proj_eta:>4}{RESET}")
+    else:
+        # Pad to match width of "⇒ XXX%" (6 visible chars) so following
+        # segments align with the projection column on the other window.
+        parts.append(" " * 6)
 
     if samples:
         spark = _build_sparkline(samples, lookback_sec)

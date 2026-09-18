@@ -23,6 +23,11 @@ pub struct WindowReport {
     pub samples: Vec<Sample>,
     /// Percent per hour for the 5h window, per day for the 7d one.
     pub rate: Option<f64>,
+    /// Intensity over the one the remaining budget affords.
+    pub pace: Option<f64>,
+    /// Work the remaining budget buys, on the window that reports it that way.
+    pub work_left: Option<String>,
+    /// The moment the limit lands, on the window that reports it that way.
     pub time_to_100: Option<String>,
 }
 
@@ -175,12 +180,34 @@ fn report_for<Tz: TimeZone>(
         WindowKind::FiveHour => estimate.intensity.get(),
         WindowKind::SevenDay => estimate.per_day(kind),
     };
+    // Each window says what is left in the unit its length makes readable:
+    // five hours hold no night, so the work itself is the answer there, while
+    // a week holds several and the date is what a plan hangs on. Neither is
+    // worth a column while the pace stays inside the budget.
+    let over_budget = estimate.pace.is_some_and(|pace| pace > 1.0);
+    let (work_left, time_to_100) = match kind {
+        WindowKind::FiveHour => (
+            estimate
+                .work_remaining
+                .filter(|_| over_budget)
+                .map(|work| render::format_work_left(work.get())),
+            None,
+        ),
+        WindowKind::SevenDay => (
+            None,
+            estimate
+                .seconds_to_limit
+                .map(|seconds| render::format_deadline(Timestamp::new(now.get() + seconds), zone)),
+        ),
+    };
     Ok(WindowReport {
         projected: Some(estimate.projected),
         confidence: Some(estimate.confidence),
         samples,
         rate: Some(rate),
-        time_to_100: estimate.seconds_to_limit.map(render::format_deadline),
+        pace: estimate.pace,
+        work_left,
+        time_to_100,
     })
 }
 
@@ -229,9 +256,11 @@ fn window_view(
         projected: report.projected,
         cooldown: render::format_cooldown(state.map(|state| state.resets_at), now, use_days),
         time_to_100: report.time_to_100.clone(),
+        work_left: report.work_left.clone(),
         samples: report.samples.clone(),
         confidence: report.confidence,
         rate: report.rate,
+        pace: report.pace,
         proj_eta: None,
     }
 }

@@ -50,7 +50,7 @@ impl SlotChunk {
     }
 }
 
-fn local<Tz: TimeZone>(at: Timestamp, zone: &Tz) -> DateTime<Tz> {
+pub fn local<Tz: TimeZone>(at: Timestamp, zone: &Tz) -> DateTime<Tz> {
     let seconds = at.get().trunc() as i64;
     DateTime::from_timestamp(seconds, 0)
         .unwrap_or_else(|| DateTime::from_timestamp_nanos(0))

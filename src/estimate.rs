@@ -67,6 +67,14 @@ pub struct Estimate {
     pub confidence: Confidence,
     /// Seconds from now until usage is projected to reach 100%.
     pub seconds_to_limit: Option<f64>,
+    /// The intensity being kept, over the one the remaining budget affords.
+    /// Above 1.0 the budget runs out before the window resets, which is the
+    /// same statement as a projection above 100%. Absent once the budget is
+    /// spent and there is nothing left to pace.
+    pub pace: Option<f64>,
+    /// Work the remaining budget still buys at this intensity. Absent while
+    /// nothing is being spent, where it would not be finite.
+    pub work_remaining: Option<ActiveHours>,
 }
 
 impl Estimate {
@@ -112,11 +120,21 @@ pub fn project<Tz: TimeZone>(inputs: &Inputs<'_>, zone: &Tz) -> Estimate {
         / (prior_weight + inputs.active_observed);
     let projected = inputs.used + intensity * active_remaining;
 
+    // Both read the same two quantities, so neither can contradict the
+    // projection they are derived from.
+    let budget_left = Pct::new(100.0) - inputs.used;
+    let pace =
+        (budget_left.get() > 0.0).then(|| (intensity * active_remaining).get() / budget_left.get());
+    let work_remaining =
+        (budget_left.get() > 0.0 && intensity.get() > 0.0).then(|| budget_left / intensity);
+
     Estimate {
         projected,
         intensity,
         active_remaining,
         active_total,
+        pace,
+        work_remaining,
         confidence: confidence_of(inputs),
         seconds_to_limit: seconds_to_limit(
             inputs.used,
@@ -406,6 +424,48 @@ mod tests {
             .confidence,
             Confidence::High
         );
+    }
+
+    #[test]
+    fn the_pace_restates_the_projection() {
+        let estimate = seven_day(
+            20.0,
+            48.0,
+            16.0,
+            Some(Prior {
+                lambda: 2.0,
+                weight: 90.0,
+            }),
+        );
+        let pace = estimate.pace.expect("a pace");
+        let expected = (estimate.projected.get() - 20.0) / (100.0 - 20.0);
+        assert!(
+            (pace - expected).abs() < 1e-9,
+            "pace {pace} against {expected}"
+        );
+        assert_eq!(pace > 1.0, estimate.projected.get() > 100.0);
+    }
+
+    #[test]
+    fn the_work_left_is_the_budget_over_the_intensity() {
+        let estimate = seven_day(
+            60.0,
+            48.0,
+            16.0,
+            Some(Prior {
+                lambda: 4.0,
+                weight: 90.0,
+            }),
+        );
+        let work = estimate.work_remaining.expect("work remaining");
+        assert!((work.get() - 40.0 / estimate.intensity.get()).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_spent_window_has_nothing_left_to_pace() {
+        let estimate = seven_day(100.0, 48.0, 16.0, None);
+        assert_eq!(estimate.pace, None);
+        assert_eq!(estimate.work_remaining, None);
     }
 
     #[test]

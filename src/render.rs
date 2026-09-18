@@ -6,11 +6,13 @@
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
+use chrono::{Datelike as _, TimeZone, Timelike as _};
 use serde::Deserialize;
 
 use crate::color;
 use crate::estimate::Confidence;
 use crate::glyphs;
+use crate::slots;
 use crate::transcript::FAMILY_ORDER;
 use crate::units::{Pct, Timestamp};
 use crate::window::{Sample, WindowKind};
@@ -26,6 +28,10 @@ const SPARK_BUCKETS: usize = 8;
 const SPARK_PEAK_FLOOR: f64 = 0.5;
 /// Idle past the cache TTL earns the long-idle nudge after this long.
 const NUDGE_AFTER_SEC: f64 = 1800.0;
+/// Pace at which the figure turns yellow, short of the limit it is heading for.
+const PACE_WARN: f64 = 0.8;
+/// A pace reads as a warning long before this, and the column has a width.
+const PACE_DISPLAY_MAX: f64 = 999.0;
 
 /// Everything one window contributes to the line it owns.
 #[derive(Debug, Default, Deserialize)]
@@ -35,12 +41,17 @@ pub struct WindowView {
     pub projected: Option<Pct>,
     /// Preformatted time until the window resets.
     pub cooldown: String,
-    /// Preformatted time until usage is projected to reach 100%.
+    /// Preformatted moment at which usage is projected to reach 100%.
     pub time_to_100: Option<String>,
+    /// Preformatted work the remaining budget still buys.
+    pub work_left: Option<String>,
     pub samples: Vec<Sample>,
     pub confidence: Option<Confidence>,
     /// Percent per hour for the 5h window, per day for the 7d one.
     pub rate: Option<f64>,
+    /// Intensity over the one the remaining budget affords, where 1.0 lands
+    /// exactly on the limit at reset.
+    pub pace: Option<f64>,
     /// Shown in place of a projection while one is not yet available.
     pub proj_eta: Option<String>,
 }
@@ -335,6 +346,31 @@ fn format_rate(kind: WindowKind, rate: Option<f64>) -> String {
     format!("{rate_color}{rate:.0}{unit}{}", color::RESET)
 }
 
+/// The intensity being kept, against the one the remaining budget affords.
+/// Unitless on purpose: 100% is the pace that lands exactly on the limit, and
+/// the figure stays finite as the window empties.
+fn format_pace(pace: f64) -> String {
+    let percent = (pace * 100.0).min(PACE_DISPLAY_MAX);
+    let tint = if pace >= 1.0 {
+        color::RED
+    } else if pace >= PACE_WARN {
+        color::YELLOW
+    } else {
+        color::GREEN
+    };
+    format!("{tint}{} {percent:.0}%{}", glyphs::PACE, color::RESET)
+}
+
+/// Work a budget still buys, in the hours the estimator counts rather than as
+/// a countdown: idle time does not consume it.
+pub fn format_work_left(hours: f64) -> String {
+    if hours >= 10.0 {
+        format!("{hours:.0}h")
+    } else {
+        format!("{hours:.1}h")
+    }
+}
+
 fn format_window(
     kind: WindowKind,
     view: &WindowView,
@@ -399,6 +435,22 @@ fn format_window(
     let rate = format_rate(kind, view.rate);
     if !rate.is_empty() {
         parts.push(rate);
+    }
+
+    if let Some(pace) = view.pace {
+        parts.push(format_pace(pace));
+    }
+
+    // One time-shaped figure per window: the work a budget buys on the 5h
+    // line, the moment it runs out on the 7d one.
+    if let Some(work_left) = &view.work_left {
+        parts.push(format!(
+            "{}{}{} {work_left}{}",
+            color::BOLD,
+            color::RED,
+            glyphs::WORK_LEFT,
+            color::RESET
+        ));
     }
 
     if let Some(deadline) = &view.time_to_100 {
@@ -631,20 +683,13 @@ fn strip_context_note(model: &str) -> String {
     out
 }
 
-/// Time until the limit is reached, in the compact form the deadline column
-/// uses.
-pub fn format_deadline(seconds: f64) -> String {
-    let minutes = (seconds / 60.0).max(0.0) as u64;
-    if minutes < 1 {
-        return "<1m".to_string();
-    }
-    if minutes >= 1440 {
-        return format!("{}d{:02}h", minutes / 1440, (minutes % 1440) / 60);
-    }
-    if minutes >= 60 {
-        return format!("{}h{:02}m", minutes / 60, minutes % 60);
-    }
-    format!("{minutes}m")
+/// The moment the limit is reached, as a local weekday and hour.
+///
+/// A date rather than a span: a countdown would read as a second timer beside
+/// the window's own, and the hour is as precise as the estimate deserves.
+pub fn format_deadline<Tz: TimeZone>(at: Timestamp, zone: &Tz) -> String {
+    let moment = slots::local(at, zone);
+    format!("{} {:02}h", moment.weekday(), moment.hour())
 }
 
 /// Time until a window resets, right-aligned in the five columns the prefix
@@ -724,11 +769,12 @@ pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
 mod tests {
     use super::{
         Confidence, IdleView, RenderCtx, StatusView, WindowView, build_sparkline,
-        build_two_tone_bar, display_width, format_cooldown, format_window, render_status_line,
-        strip_context_note, visible_len,
+        build_two_tone_bar, display_width, format_cooldown, format_deadline, format_window,
+        render_status_line, strip_context_note, visible_len,
     };
     use crate::units::{Pct, Timestamp};
     use crate::window::{Sample, WindowKind};
+    use chrono::FixedOffset;
 
     fn samples(points: &[(f64, f64)]) -> Vec<Sample> {
         points
@@ -866,6 +912,63 @@ mod tests {
             strip_context_note("Opus 5 (1M context) build (beta)"),
             "Opus 5 build (beta)"
         );
+    }
+
+    #[test]
+    fn the_pace_and_the_work_left_follow_the_rate() {
+        let line = format_window(
+            WindowKind::FiveHour,
+            &WindowView {
+                pct: Some(Pct::new(81.0)),
+                projected: Some(Pct::new(126.0)),
+                cooldown: "1h12m".to_string(),
+                rate: Some(45.0),
+                // (126 - 81) / (100 - 81), the projection restated.
+                pace: Some(2.37),
+                work_left: Some("0.4h".to_string()),
+                confidence: Some(Confidence::High),
+                ..WindowView::default()
+            },
+            &RenderCtx::default(),
+            10,
+        );
+        assert_eq!(
+            strip_ansi(&line),
+            "🕛 1h12m/5h ▰▰▰▰▰▰▰▰▰▰ 81% ⇒ 126% 45%/h 🏃 237% ⌛ 0.4h"
+        );
+    }
+
+    #[test]
+    fn a_pace_inside_the_budget_hides_the_work_left() {
+        let line = format_window(
+            WindowKind::FiveHour,
+            &WindowView {
+                pct: Some(Pct::new(22.0)),
+                projected: Some(Pct::new(46.0)),
+                cooldown: "2h07m".to_string(),
+                rate: Some(45.0),
+                pace: Some(0.31),
+                ..WindowView::default()
+            },
+            &RenderCtx::default(),
+            10,
+        );
+        assert_eq!(
+            strip_ansi(&line),
+            "🕛 2h07m/5h ▰▰▰▰▰▱▱▱▱▱ 22% ⇒  46% 45%/h 🏃 31%"
+        );
+    }
+
+    #[test]
+    fn the_deadline_reads_as_a_local_moment() {
+        // 2026-09-14 16:00 UTC, a Monday.
+        let at = Timestamp::new(1_789_401_600.0);
+        let paris = FixedOffset::east_opt(2 * 3600).expect("paris summer offset");
+        assert_eq!(
+            format_deadline(at, &FixedOffset::east_opt(0).unwrap()),
+            "Mon 16h"
+        );
+        assert_eq!(format_deadline(at, &paris), "Mon 18h");
     }
 
     #[test]

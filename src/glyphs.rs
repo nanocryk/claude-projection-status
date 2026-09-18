@@ -17,6 +17,10 @@ pub const SPARK_LEVELS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '
 pub const CALENDAR: &str = "🗓️";
 pub const PROJ_ARROW: char = '⇒';
 pub const DEADLINE: char = '⏰';
+/// Work the remaining budget buys, as opposed to a moment on the clock.
+pub const WORK_LEFT: char = '⌛';
+/// Pace held against the pace the remaining budget affords.
+pub const PACE: char = '🏃';
 pub const IDLE: char = '💤';
 pub const COLD: char = '🥶';
 pub const BEE: char = '🐝';

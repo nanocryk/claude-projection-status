@@ -128,3 +128,12 @@ impl std::ops::Div<ActiveHours> for Pct {
         PctPerActiveHour(if hours.0 > 0.0 { self.0 / hours.0 } else { 0.0 })
     }
 }
+
+/// Budget spent at a given intensity buys a stretch of active hours.
+impl std::ops::Div<PctPerActiveHour> for Pct {
+    type Output = ActiveHours;
+
+    fn div(self, rate: PctPerActiveHour) -> ActiveHours {
+        ActiveHours::new(if rate.0 > 0.0 { self.0 / rate.0 } else { 0.0 })
+    }
+}

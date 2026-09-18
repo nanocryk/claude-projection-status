@@ -1,7 +1,10 @@
-//! The rendered line must match the Python implementation it replaces.
+//! The layout must not drift.
 //!
-//! Cases in `tests/fixtures/render_cases.json` were produced by
-//! `tools/gen_render_fixtures.py` against that implementation.
+//! Each case in `tests/fixtures/render_cases.json` holds a view and the line
+//! the original Python implementation drew for it, captured from that
+//! implementation at commit `ae09abe` before it was replaced. The idle
+//! indicator is deliberately absent from these cases: it moved to line 3, and
+//! its layout is asserted in the renderer's own tests instead.
 
 use claude_status::render::{RenderCtx, StatusView, render_status_line};
 use serde::Deserialize;
@@ -25,7 +28,7 @@ fn escaped(text: &str) -> String {
 }
 
 #[test]
-fn every_case_renders_exactly_as_the_python_did() {
+fn every_case_renders_exactly_as_it_was_captured() {
     let cases = cases();
     assert!(cases.len() >= 13, "fixtures look truncated");
     for case in &cases {

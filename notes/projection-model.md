@@ -44,6 +44,11 @@ increased during it.
   kernel before the ratio is taken, so a single observed evening cannot pin a
   slot at 0 or 1.
 - Slots are local-time: a working day is a local-time thing.
+- An hour is judged once, when it closes, and the verdict is stored. Everything
+  downstream reads that verdict back: the profile's counters, the active hours
+  a window has seen, and the intensity a finished window contributes to its
+  prior. One hour therefore cannot be active in one calculation and idle in
+  another, and a long session costs no more to read than a short one.
 - Usage that appears across a gap between samples (another client, another
   machine) is spread over the gap's slots weighted by `a(h,d)`, rather than
   credited to the slot that happened to hold the next sample.
@@ -54,20 +59,32 @@ Usage per active hour is a count-like quantity, so it takes the conjugate
 Gamma-Poisson posterior mean:
 
 ```
-lambda_hat = (k * lambda_prior + pct) / (k + A_elapsed)
+lambda_hat = (k * lambda_prior + used_observed) / (k + A_observed)
 ```
 
-- `A_elapsed` is the active hours observed so far in this window.
+Both sides of that fraction describe the same stretch of the window: the one
+that was watched. `used_observed` is what was spent between the first reading
+of this window and now, and `A_observed` is the active hours in that same
+stretch. Usage from before the first reading still anchors the projection, as
+the point it starts from, but it is not evidence of a pace: budget spent over
+an unknown number of working hours says nothing about how fast the work goes.
+
 - `lambda_prior` is the decayed intensity of past windows of the same kind.
-- `k` is the prior's weight, expressed in active hours (about one working day).
+- `k` is the prior's weight in active hours, a quarter of the working hours the
+  window is expected to hold. Scaling it to the window keeps the prior worth
+  the same fraction of a 5h window as of a 7d one; a constant sized for the
+  week would swamp the shorter window, which holds only a few active hours.
 
 Minutes into a window, `k` dominates and the projection says "this window is
-going like your usual ones". By the time real data accumulates, it dominates
-instead. A near-zero denominator is impossible while `k > 0`, so a fresh window
-cannot produce an unbounded projection.
+going like your usual ones". As real data accumulates it takes over. A
+near-zero denominator is impossible while `k > 0`, so a fresh window cannot
+produce an unbounded projection.
 
-With no history at all, `lambda_prior` is budget-neutral (`100% / A_total`) and
-the projection reads as exactly on budget, at low confidence.
+With no history at all, `lambda_prior` is the intensity that spends one
+window's budget over one window's working hours (`100% / A_total`). A fresh
+window then reads as exactly on budget, and one already ahead of that pace
+reads above it. Anchoring on the whole window rather than on what is left
+keeps the assumption from growing as the window empties.
 
 ## Derived values
 

@@ -1,141 +1,159 @@
 # claude-projection-status
 
-A custom status bar for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) that replaces the default rate-limit display with rich usage visualization, projections, and historical tracking.
-
-## Motivation
-
-Inspired by [leeguooooo/claude-code-usage-bar](https://github.com/leeguooooo/claude-code-usage-bar), which provides a real-time statusline with token usage and burn rate. This project rebuilds the concept from scratch with a focus on predictive projections and historical learning. It adds:
-
-- **Visual usage bars** with two-tone display (current + projected)
-- **End-of-window projections** using historical activity patterns
-- **Time-to-100% estimates** factoring in hourly activity probability
-- **Trend indicators** showing acceleration/deceleration
-- **Cache hit ratio** and context window consumption
-- **Peak hour detection** from historical usage patterns
-- **Multi-line layout** with aligned bars for 5h and 7d windows
-
-## Screenshot
+A status line for [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+that replaces the default rate-limit display with usage bars, end-of-window
+projections learned from your own working pattern, and the state of the prompt
+cache.
 
 ```
-[4h32] 5h:[██████▒▒──]15% ~>≈23% ↑ 8%/h   !2h30m
-[6d02] 7d:[██▒───────] 2% ~>≈ 8% → 4%/d   opus-4 (42%ctx 85%hit)
+🕔 2h29m/5h ▰▰▰▰▰▰▰▱▱▱ 22% ⇒  72% 80%/h
+🗓️ 4d23h/7d ▰▰▰▰▰▰▰▰▰▰ 31% ⇒ 102% 14%/d ⏰ 4d19h
+Opus 5      ▰▰▰▰▰▰▱▱▱▱ 55%ctx  💤 ▰▰▰▰▰ 16s/1h •
 ```
 
-## How It Works
+Line 1 is the 5h rate-limit window, line 2 the 7d one, line 3 the conversation:
+the model, how full its context is, and how long the prompt cache has been
+decaying.
 
-Claude Code pipes rate-limit JSON to stdin on each status refresh. This tool:
+## What the projection means
 
-1. **Records** each usage sample in a local SQLite database
-2. **Builds** an hourly activity profile from historical data (P(active) per hour)
-3. **Projects** end-of-window usage by combining current session rate (60%) with historical median (40%), modulated by activity probability per hour
-4. **Renders** an ANSI-colored status line to stdout
+Consumption happens while you work, not while time passes. The projection is
+therefore an intensity, in percent of the window's budget per **active hour**,
+multiplied by the active hours the window still holds:
 
-### Projection Algorithm
+```
+projected = used + intensity * active_hours_remaining
+```
 
-- **5h window**: Active-rate projection with hourly activity profile. Walks hour-by-hour, multiplying effective rate by P(active) for each hour.
-- **7d window**: Linear projection using overall rate (includes idle time), since idle patterns are already baked into the rate.
+The working hours come from a profile of your own week, learned from when usage
+actually rose, one hour of the local week at a time. The intensity comes from a
+posterior that blends what this window has been watched spending with what past
+windows of the same kind spent. Neither number is configurable, and nothing
+needs to be filled in: the profile fills itself over the first few days and
+keeps following your habits with a four-week half-life.
 
-### Data Storage
+Wall-clock time never multiplies an intensity, so a burst of work ten minutes
+into a fresh week cannot be projected as seven days of it.
 
-SQLite database at `~/.cache/claude-projection-status/history.db` with two tables:
-- `usage_samples` — timestamped usage snapshots per window type
-- `active_hours` — hourly activity profile (sample count + usage delta per hour/weekday)
+`notes/projection-model.md` describes the model in full.
 
-Data is automatically pruned after 14 days (configurable).
+## Reading the line
 
-## Installation
+| Element | Example | Meaning |
+|---|---|---|
+| Window prefix | `🕔 2h29m/5h` | Time until the window resets. The clock face follows the hour |
+| Bar | `▰▰▰▰▰▰▰▱▱▱` | Solid is spent, shaded is projected on top, dim is free |
+| Usage | `22%` | Spent now. Yellow past `warning_pct`, red past `critical_pct` |
+| Projection | `⇒ 72%` | Expected at reset. Bold when well supported, faint when barely |
+| Rate | `80%/h`, `14%/d` | Percent of the budget per working hour, and per day |
+| Sparkline | `▁▂▅▃▁▁▂▁` | Usage per bucket across the window |
+| Deadline | `⏰ 4d19h` | When the projection crosses 100%. Absent when it does not |
+| Context | `55%ctx` | How full the conversation's context window is |
+| Idle | `💤 ▰▰▰▰▰ 16s/1h` | Time since the last API call, against the cache lifetime |
+| Live | `•` | Something was written to the transcript moments ago |
+| Cold | `🥶` | The prompt cache has passed its lifetime |
+| Nudge | `👋` | Idle for over half an hour |
+| Model mix | `62%o 31%s 7%h` | Share of session tokens per model family. Hidden when only one |
+| Subagents | `🐝3 18%` | Subagents spawned, and their share of the session's tokens |
+| Bypass | `[BYPASS]` | Permission prompts are being skipped |
 
-Requires Python >= 3.10. No external dependencies.
+The idle bar drains as the cache decays. Its lifetime is read from the
+session's own cache writes; until the session has made one, the last lifetime
+seen on this machine is used and its tag renders dimmed. When the transcript
+cannot be read at all the block stays in place showing `--`, so a missing
+reading never looks like a warm cache.
+
+## Install
 
 ```bash
-# Clone
-git clone https://github.com/nanocryk/claude-projection-status.git
-cd claude-projection-status
-
-# Install (editable mode recommended for easy updates)
-pip install -e .
+cargo install --path .
 ```
 
-### Register with Claude Code
-
-Add to `~/.claude/settings.json`:
-
-```json
-{
-  "statusLine": {
-    "type": "command",
-    "command": "/path/to/claude-projection-status/claude-status",
-    "padding": 0
-  }
-}
-```
-
-Or if installed via pip:
+That puts `claude-status` on your PATH. Then point Claude Code at it in
+`~/.claude/settings.json`:
 
 ```json
 {
   "statusLine": {
     "type": "command",
     "command": "claude-status",
-    "padding": 0
+    "padding": 0,
+    "refreshInterval": 10
   }
 }
 ```
 
 ## Configuration
 
-Settings are read from `~/.config/claude-projection-status/config.json`, overridable by environment variables. Env vars take precedence over the config file.
+Read from `config.json` in your platform's configuration directory, and
+overridden by environment variables.
 
-```json
-{
-  "warning_pct": 40,
-  "critical_pct": 70,
-  "retention_days": 14,
-  "min_samples": 5,
-  "min_timespan": 600
-}
-```
+| Platform | Configuration | Database |
+|---|---|---|
+| Linux | `$XDG_CONFIG_HOME/claude-projection-status` | `$XDG_CACHE_HOME/claude-projection-status` |
+| macOS | `~/Library/Application Support/claude-projection-status` | `~/Library/Caches/claude-projection-status` |
+| Windows | `%APPDATA%\claude-projection-status` | `%LOCALAPPDATA%\claude-projection-status` |
 
-| Setting | Env Var | Default | Description |
-|---------|---------|---------|-------------|
-| `warning_pct` | `CLAUDE_STATUS_WARNING` | `40` | Yellow threshold (%) |
-| `critical_pct` | `CLAUDE_STATUS_CRITICAL` | `70` | Red threshold (%) |
-| `cache_dir` | `CLAUDE_STATUS_CACHE` | `~/.cache/claude-projection-status` | Database and cache location |
-| `retention_days` | `CLAUDE_STATUS_RETENTION` | `14` | Days of history to keep |
-| `min_samples` | `CLAUDE_STATUS_MIN_SAMPLES` | `5` | Minimum samples before projecting |
-| `min_timespan` | `CLAUDE_STATUS_MIN_TIMESPAN` | `600` | Seconds of data needed before projecting |
-| `debug` | `CLAUDE_STATUS_DEBUG` | `false` | Enable debug logging to `debug.log` |
+| Setting | Environment variable | Default | Meaning |
+|---|---|---|---|
+| `warning_pct` | `CLAUDE_STATUS_WARNING` | `40` | Usage turns yellow here |
+| `critical_pct` | `CLAUDE_STATUS_CRITICAL` | `70` | Usage turns red here |
+| `show_model_mix` | `CLAUDE_STATUS_MODEL_MIX` | `true` | Read transcripts for the mix and cache indicators |
+| `cache_dir` | `CLAUDE_STATUS_CACHE` | platform cache | Where `state.db` lives |
+| `projects_root` | `CLAUDE_STATUS_PROJECTS` | `~/.claude/projects` | Where Claude Code files transcripts |
+| `retention_days` | `CLAUDE_STATUS_RETENTION` | `14` | Days of raw readings to keep |
+| `debug` | `CLAUDE_STATUS_DEBUG` | `false` | Report storage errors on stderr |
+| | `CLAUDE_STATUS_CONFIG` | | Read the configuration from this file instead |
 
-## Display
+The configuration file holds display and location settings only. Nothing about
+the projection is tunable by hand.
 
-Three lines with aligned bars: 5h window, 7d window, then model + context/mix:
+## Storage
 
-```
-[4h32] 5h:[████──────] 5% ~>≈13% → 3%/h
-[6d02] 7d:[██────────] 2% ~>≈ 8% → 4%/d
-opus-4    [████──────] 42%ctx
-```
+One SQLite database, `state.db`, holding the readings of the current windows,
+the activity profile's decayed counters, the verdict for each elapsed hour, the
+intensity carried over from finished windows, and what has been learned about
+each session. Raw readings are pruned after `retention_days`; the 168-slot
+profile is kept and ages by decay rather than deletion. Concurrent sessions
+share it under write-ahead logging.
 
-## Status Elements
+Deleting the database costs the learned profile and nothing else: the tool
+starts again from an empty history the next time it runs.
 
-| Element | Example | Meaning |
-|---------|---------|---------|
-| `[4h32]` | Cooldown | Time until window resets |
-| `[████▒▒────]` | Bar | Solid=current, shaded=projected, line=free |
-| `15%` | Usage | Current usage (green/yellow/red) |
-| `~>≈23%` | Projection | Estimated end-of-window usage (`~`=low, `≈`=medium confidence) |
-| `↑` / `→` / `↓` | Trend | Rate acceleration vs last 30 min |
-| `8%/h` | Rate | Current consumption rate |
-| `!2h30m` | Time to 100% | Estimated time until limit hit (only shown when proj > 80%) |
-| `peak-h` | Peak hour | Current hour is historically high-activity |
-| `42%ctx` | Context | Context window consumption |
-| `85%hit` | Cache | Cache read hit ratio |
-| `[BYPASS]` | Bypass | Skip-permissions mode active |
-
-## Summary Mode
+## Other commands
 
 ```bash
 claude-status --summary
 ```
 
-Prints aggregate statistics from the database (historical rates, activity patterns).
+Prints what the database holds: how many readings, over what range, the
+activity profile as an hour-by-weekday grid, and the intensity priors.
+
+```bash
+claude-status check-threshold --session-id <id> --window 5h --threshold 90
+```
+
+Prints the session's latest usage for that window when it has reached the
+threshold, and nothing otherwise. Intended for hooks that want to act as a
+limit approaches. It stays silent on failure rather than reporting a crossing
+it cannot verify.
+
+## Development
+
+```bash
+cargo fmt --check
+cargo clippy --all-targets -- -D warnings
+cargo test
+```
+
+The suite covers the estimator's arithmetic, the profile's estimation, the
+storage layer, transcript reading against committed session files, scripted
+timelines through the whole refresh path, and a calibration run: a simulated
+user works a known pattern for two weeks, and the estimator has to recover the
+end-of-window usage that pattern produces without being told any of it.
+
+## Credit
+
+The concept comes from
+[leeguooooo/claude-code-usage-bar](https://github.com/leeguooooo/claude-code-usage-bar),
+a real-time status line with token usage and burn rate.

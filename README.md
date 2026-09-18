@@ -6,8 +6,8 @@ projections learned from your own working pattern, and the state of the prompt
 cache.
 
 ```
-🕔 2h29m/5h ▰▰▰▰▰▰▰▱▱▱ 22% ⇒  72% 80%/h 🏃 64%
-🗓️ 4d23h/7d ▰▰▰▰▰▰▰▰▰▰ 31% ⇒ 102% 14%/d 🏃 103% ⏰ Mon 18h
+🕔 2h29m/5h ▰▰▰▰▰▰▰▱▱▱ 22% ⇒  72% 💸80%/h 🏃64%
+🗓️ 4d23h/7d ▰▰▰▰▰▰▰▰▰▰ 31% ⇒ 102% 💸14%/d 🎯103% ⏰Mon 18h
 Opus 5      ▰▰▰▰▰▰▱▱▱▱ 55%ctx  💤 ▰▰▰▰▰ 16s/1h •
 ```
 
@@ -45,13 +45,19 @@ the window ends with budget to spare, over 100% it runs out early, and 100%
 lands exactly on the limit at the reset. Being a ratio it has no unit to
 misread, and it stays finite as the window empties.
 
+The glyph beside the number draws the band it falls in, so the shape of the
+situation reads before the number does: a speed while the allowance covers the
+pace, and something rather less encouraging once it stops covering it. Landing
+on the mark, where the allowance runs out exactly as the window resets, has a
+glyph of its own. The rest are found by earning them.
+
 Past 100% each window says what is left. The two lines answer different
 questions, in the unit that suits their length:
 
-- `⌛ 0.4h` on the 5h line is an **amount of work**: the budget covers 24 more
+- `⌛0.4h` on the 5h line is an **amount of work**: the budget covers 24 more
   minutes of working. It moves only while work is happening, so a break does
   not shorten it and working faster does.
-- `⏰ Mon 18h` on the 7d line is a **moment**: the limit lands Monday around
+- `⏰Mon 18h` on the 7d line is a **moment**: the limit lands Monday around
   18:00, if the week is worked the way the profile says it usually is. The
   nights and the weekend sit inside that date and push it out.
 
@@ -69,10 +75,10 @@ date is what a plan hangs on. Each line carries one of the two, never both.
 | Bar | `▰▰▰▰▰▰▰▱▱▱` | Solid is spent, shaded is projected on top, dim is free |
 | Usage | `22%` | Spent now. Yellow past `warning_pct`, red past `critical_pct` |
 | Projection | `⇒ 72%` | Expected at reset. Bold when well supported, faint when barely |
-| Rate | `80%/h`, `14%/d` | Percent of the budget per working hour, and per day |
-| Pace | `🏃 64%` | The rate over the fastest the remaining budget affords. 100% lands exactly on the limit at reset |
-| Work left | `⌛ 0.4h` | 5h line: hours of work the budget still buys. Idle time does not consume it. Absent below 100% pace |
-| Deadline | `⏰ Mon 18h` | 7d line: when the limit lands, on the local clock. Absent below 100% pace |
+| Rate | `💸80%/h`, `💸14%/d` | Percent of the budget per working hour, and per day |
+| Pace | `🏃64%` | The rate over the fastest the remaining budget affords. 100% lands exactly on the limit at reset |
+| Work left | `⌛0.4h` | 5h line: hours of work the budget still buys. Idle time does not consume it. Absent below 100% pace |
+| Deadline | `⏰Mon 18h` | 7d line: when the limit lands, on the local clock. Absent below 100% pace |
 | Context | `55%ctx` | How full the conversation's context window is |
 | Idle | `💤 ▰▰▰▰▰ 16s/1h` | Time since the last API call, against the cache lifetime |
 | Live | `•` | Something was written to the transcript moments ago |

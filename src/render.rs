@@ -26,6 +26,10 @@ const IDLE_BAR_WIDTH: usize = 5;
 const NUDGE_AFTER_SEC: f64 = 1800.0;
 /// Pace at which the figure turns yellow, short of the limit it is heading for.
 const PACE_WARN: f64 = 0.8;
+/// Band around 100% that counts as spending the allowance exactly. Landing on
+/// the mark is the best use of a window, so it reads as a warning rather than
+/// as an alarm.
+const PACE_ON_TARGET: std::ops::RangeInclusive<f64> = 0.97..=1.03;
 /// A pace reads as a warning long before this, and the column has a width.
 const PACE_DISPLAY_MAX: f64 = 999.0;
 
@@ -244,7 +248,12 @@ fn format_rate(kind: WindowKind, rate: Option<f64>) -> String {
         WindowKind::SevenDay => ("%/d", 1.0, 10.0, 20.0),
     };
     if rate < quiet_below {
-        return format!("{}{rate:.1}{unit}{}", color::DIM, color::RESET);
+        return format!(
+            "{}{}{rate:.1}{unit}{}",
+            color::DIM,
+            glyphs::RATE,
+            color::RESET
+        );
     }
     let rate_color = if rate < warn_above {
         color::GREEN
@@ -253,7 +262,35 @@ fn format_rate(kind: WindowKind, rate: Option<f64>) -> String {
     } else {
         color::RED
     };
-    format!("{rate_color}{rate:.0}{unit}{}", color::RESET)
+    format!(
+        "{rate_color}{}{rate:.0}{unit}{}",
+        glyphs::RATE,
+        color::RESET
+    )
+}
+
+/// A speed while the allowance covers the pace, and how badly it does not once
+/// it stops covering it.
+fn pace_scene(pace: f64) -> &'static str {
+    if pace < 0.20 {
+        glyphs::PACE_ASLEEP
+    } else if pace < 0.50 {
+        glyphs::PACE_WALK
+    } else if pace < 0.85 {
+        glyphs::PACE_RUN
+    } else if pace < *PACE_ON_TARGET.start() {
+        glyphs::PACE_CYCLE
+    } else if PACE_ON_TARGET.contains(&pace) {
+        glyphs::PACE_ON_TARGET
+    } else if pace < 1.5 {
+        glyphs::PACE_WALL
+    } else if pace < 2.5 {
+        glyphs::PACE_FIRE
+    } else if pace < 4.0 {
+        glyphs::PACE_FIRE_TRUCK
+    } else {
+        glyphs::PACE_VOLCANO
+    }
 }
 
 /// The intensity being kept, against the one the remaining budget affords.
@@ -261,14 +298,14 @@ fn format_rate(kind: WindowKind, rate: Option<f64>) -> String {
 /// the figure stays finite as the window empties.
 fn format_pace(pace: f64) -> String {
     let percent = (pace * 100.0).min(PACE_DISPLAY_MAX);
-    let tint = if pace >= 1.0 {
+    let tint = if pace > *PACE_ON_TARGET.end() {
         color::RED
     } else if pace >= PACE_WARN {
         color::YELLOW
     } else {
         color::GREEN
     };
-    format!("{tint}{} {percent:.0}%{}", glyphs::PACE, color::RESET)
+    format!("{tint}{}{percent:.0}%{}", pace_scene(pace), color::RESET)
 }
 
 /// Work a budget still buys, in the hours the estimator counts rather than as
@@ -348,7 +385,7 @@ fn format_window(
     // line, the moment it runs out on the 7d one.
     if let Some(work_left) = &view.work_left {
         parts.push(format!(
-            "{}{}{} {work_left}{}",
+            "{}{}{}{work_left}{}",
             color::BOLD,
             color::RED,
             glyphs::WORK_LEFT,
@@ -358,7 +395,7 @@ fn format_window(
 
     if let Some(deadline) = &view.time_to_100 {
         parts.push(format!(
-            "{}{}{} {deadline}{}",
+            "{}{}{}{deadline}{}",
             color::BOLD,
             color::RED,
             glyphs::DEADLINE,
@@ -674,8 +711,8 @@ pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
 mod tests {
     use super::{
         Confidence, IdleView, RenderCtx, StatusView, WindowView, build_two_tone_bar, display_width,
-        format_cooldown, format_deadline, format_window, render_status_line, strip_context_note,
-        visible_len,
+        format_cooldown, format_deadline, format_window, pace_scene, render_status_line,
+        strip_context_note, visible_len,
     };
     use crate::units::{Pct, Timestamp};
     use crate::window::WindowKind;
@@ -835,7 +872,19 @@ mod tests {
         );
         assert_eq!(
             strip_ansi(&line),
-            "🕛 1h12m/5h ▰▰▰▰▰▰▰▰▰▰ 81% ⇒ 126% 45%/h 🏃 237% ⌛ 0.4h"
+            "🕛 1h12m/5h ▰▰▰▰▰▰▰▰▰▰ 81% ⇒ 126% 💸45%/h 🔥237% ⌛0.4h"
+        );
+    }
+
+    #[test]
+    fn the_pace_scene_follows_the_band() {
+        let scenes: Vec<&str> = [0.05, 0.3, 0.7, 0.9, 1.0, 1.2, 2.0, 3.0, 9.0]
+            .iter()
+            .map(|pace| pace_scene(*pace))
+            .collect();
+        assert_eq!(
+            scenes,
+            vec!["😴", "🚶", "🏃", "🚴", "🎯", "🧱", "🔥", "🚒", "🌋"]
         );
     }
 
@@ -856,7 +905,7 @@ mod tests {
         );
         assert_eq!(
             strip_ansi(&line),
-            "🕛 2h07m/5h ▰▰▰▰▰▱▱▱▱▱ 22% ⇒  46% 45%/h 🏃 31%"
+            "🕛 2h07m/5h ▰▰▰▰▰▱▱▱▱▱ 22% ⇒  46% 💸45%/h 🚶31%"
         );
     }
 

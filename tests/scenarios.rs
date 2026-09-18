@@ -101,7 +101,7 @@ impl Harness {
             app::analyse(&self.store, &payload, RETENTION_DAYS, now, &utc()).expect("analyse");
         let session_report =
             app::read_session(&self.store, &payload, self.projects.path(), now).expect("session");
-        let view = app::build_view(&payload, &analysis, &session_report, now, false);
+        let view = app::build_view(&payload, &analysis, &session_report, now, false, None);
         let line = render::render_status_line(&view, &RenderCtx::default());
         let sample_counts = [
             self.stored_samples(WindowKind::FiveHour, five_hour.1),

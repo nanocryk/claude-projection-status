@@ -36,14 +36,21 @@ fn print_status_line() {
     let now = now();
 
     // A storage failure costs the projections, never the status line.
-    let (analysis, session) = analyse(&config, &payload, now).unwrap_or_else(|error| {
+    let (analysis, session, fun) = analyse(&config, &payload, now).unwrap_or_else(|error| {
         if config.debug {
             eprintln!("claude-status: {error}");
         }
-        (Analysis::default(), SessionReport::default())
+        (Analysis::default(), SessionReport::default(), None)
     });
 
-    let view = app::build_view(&payload, &analysis, &session, now, config::bypass_enabled());
+    let view = app::build_view(
+        &payload,
+        &analysis,
+        &session,
+        now,
+        config::bypass_enabled(),
+        fun,
+    );
     let ctx = RenderCtx {
         local_hour: Local::now().hour(),
         warning_pct: config.warning_pct,
@@ -56,7 +63,7 @@ fn analyse(
     config: &Config,
     payload: &Payload,
     now: Timestamp,
-) -> claude_status::storage::Result<(Analysis, SessionReport)> {
+) -> claude_status::storage::Result<(Analysis, SessionReport, Option<String>)> {
     let store = Store::open(&config.db_path(), now)?;
     let analysis = app::analyse(&store, payload, config.retention_days, now, &Local)?;
     let session = if config.show_model_mix {
@@ -64,7 +71,15 @@ fn analyse(
     } else {
         SessionReport::default()
     };
-    Ok((analysis, session))
+    let fun = app::fun_line(
+        &store,
+        config.fun_line,
+        &config.fun_phrases,
+        &session,
+        now,
+        &Local,
+    )?;
+    Ok((analysis, session, fun))
 }
 
 fn read_stdin() -> String {

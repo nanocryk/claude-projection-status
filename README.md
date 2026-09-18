@@ -134,10 +134,32 @@ overridden by environment variables.
 | `projects_root` | `CLAUDE_STATUS_PROJECTS` | `~/.claude/projects` | Where Claude Code files transcripts |
 | `retention_days` | `CLAUDE_STATUS_RETENTION` | `14` | Days of raw readings to keep |
 | `debug` | `CLAUDE_STATUS_DEBUG` | `false` | Report storage errors on stderr |
+| `fun_line` | `CLAUDE_STATUS_FUN` | `start` | When to draw the fourth line: `start`, `always` or `never` |
+| `fun_phrases` | | | Phrases of your own for that line |
 | | `CLAUDE_STATUS_CONFIG` | | Read the configuration from this file instead |
 
 The configuration file holds display and location settings only. Nothing about
 the projection is tunable by hand.
+
+## The fourth line
+
+Below the three that mean something sits one that does not: an observation
+drawn from your own history, or a phrase of your own, changing every five
+minutes and alternating between the two. `fun_line` decides when it appears.
+The default, `start`, draws it only before the session's first reply, so it
+costs a terminal row exactly while there is nothing else to look at.
+
+```json
+{
+  "fun_line": "always",
+  "fun_phrases": ["Reticulating splines", "Consulting the oracle"]
+}
+```
+
+The facts are computed from the hour-by-hour verdicts, the activity profile,
+the sessions table, finished windows and the model mix of the session in front
+of you. One with nothing to say stays quiet, so a young database offers fewer
+of them. `notes/fun-line.md` describes the whole arrangement.
 
 ## Storage
 

@@ -5,6 +5,26 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 
+/// When the fourth line is drawn.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FunLine {
+    /// Only before the session's first assistant turn.
+    Start,
+    Always,
+    Never,
+}
+
+impl FunLine {
+    fn parse(raw: &str) -> Option<Self> {
+        match raw.trim().to_ascii_lowercase().as_str() {
+            "start" => Some(Self::Start),
+            "always" | "1" | "true" | "yes" => Some(Self::Always),
+            "never" | "0" | "false" | "no" => Some(Self::Never),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct Config {
     /// Usage percentage at which the current-usage figure turns yellow.
@@ -19,6 +39,10 @@ pub struct Config {
     /// Days of raw samples to keep.
     pub retention_days: u32,
     pub debug: bool,
+    /// When to draw the fourth line.
+    pub fun_line: FunLine,
+    /// Phrases of the reader's own, drawn alongside the computed facts.
+    pub fun_phrases: Vec<String>,
 }
 
 impl Default for Config {
@@ -31,6 +55,8 @@ impl Default for Config {
             projects_root: default_projects_root(),
             retention_days: 14,
             debug: false,
+            fun_line: FunLine::Start,
+            fun_phrases: Vec::new(),
         }
     }
 }
@@ -56,6 +82,10 @@ impl Config {
                 .map(|days| days as u32)
                 .unwrap_or(defaults.retention_days),
             debug: flag(&file, "debug", "CLAUDE_STATUS_DEBUG").unwrap_or(defaults.debug),
+            fun_line: setting(&file, "fun_line", "CLAUDE_STATUS_FUN")
+                .and_then(|raw| FunLine::parse(&raw))
+                .unwrap_or(defaults.fun_line),
+            fun_phrases: strings(&file, "fun_phrases"),
         }
     }
 
@@ -118,6 +148,22 @@ fn setting(file: &Value, key: &str, env_key: &str) -> Option<String> {
 
 fn number(file: &Value, key: &str, env_key: &str) -> Option<f64> {
     setting(file, key, env_key)?.trim().parse().ok()
+}
+
+/// A list of strings from the file alone: a list is awkward to carry in an
+/// environment variable, and these are read once at startup.
+fn strings(file: &Value, key: &str) -> Vec<String> {
+    file.get(key)
+        .and_then(Value::as_array)
+        .map(|values| {
+            values
+                .iter()
+                .filter_map(|value| value.as_str())
+                .map(str::to_owned)
+                .filter(|text| !text.trim().is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn flag(file: &Value, key: &str, env_key: &str) -> Option<bool> {

@@ -3,7 +3,9 @@
 
 use chrono::TimeZone;
 
+use crate::config::FunLine;
 use crate::estimate::{self, Confidence};
+use crate::facts;
 use crate::history;
 use crate::input::Payload;
 use crate::profile::Profile;
@@ -14,6 +16,9 @@ use crate::storage::{self, Store};
 use crate::transcript;
 use crate::units::{Pct, Timestamp};
 use crate::window::{WindowKind, WindowState};
+
+/// How long one fact or phrase holds the fourth line before the next.
+const FUN_BUCKET_SEC: f64 = 300.0;
 
 /// What one window contributes beyond what the payload already states.
 #[derive(Debug, Default)]
@@ -50,6 +55,10 @@ impl Analysis {
 pub struct SessionReport {
     pub idle: Option<IdleView>,
     pub mix: transcript::Mix,
+    /// No assistant turn has been written yet: Claude is open and the work has
+    /// not started. A transcript that cannot be read counts as started, so an
+    /// unreadable one never props the fourth line open.
+    pub at_session_start: bool,
 }
 
 /// Read the session transcript: which models spent the tokens, how long the
@@ -88,6 +97,7 @@ pub fn read_session(
                 live: false,
             }),
             mix: transcript::Mix::default(),
+            at_session_start: true,
         });
     };
 
@@ -110,7 +120,47 @@ pub fn read_session(
             live: tail.is_live(now),
         }),
         mix: transcript::read_mix(&path, session),
+        at_session_start: tail.last_assistant.is_none(),
     })
+}
+
+/// The fourth line: one computed fact, or one of the reader's own phrases.
+///
+/// Facts and phrases alternate on a five-minute bucket of the clock. Binding
+/// the choice to time rather than to chance is what makes it readable: the
+/// line refreshes every ten seconds, and a random draw would never hold still.
+pub fn fun_line<Tz: TimeZone>(
+    store: &Store,
+    show: FunLine,
+    phrases: &[String],
+    session: &SessionReport,
+    now: Timestamp,
+    zone: &Tz,
+) -> storage::Result<Option<String>> {
+    match show {
+        FunLine::Never => return Ok(None),
+        FunLine::Start if !session.at_session_start => return Ok(None),
+        _ => {}
+    }
+    let profile = Profile::from_counts(&store.slot_counts()?);
+    let facts = facts::collect(store, &profile, &session.mix, now, zone)?;
+    Ok(pick(&facts, phrases, now))
+}
+
+/// Alternate between the two pools, falling through to whichever has anything.
+fn pick(facts: &[String], phrases: &[String], now: Timestamp) -> Option<String> {
+    let bucket = (now.get() / FUN_BUCKET_SEC).floor() as i64;
+    let (first, second) = if bucket.rem_euclid(2) == 0 {
+        (facts, phrases)
+    } else {
+        (phrases, facts)
+    };
+    let pool = if first.is_empty() { second } else { first };
+    if pool.is_empty() {
+        return None;
+    }
+    let index = (bucket / 2).rem_euclid(pool.len() as i64) as usize;
+    Some(pool[index].clone())
 }
 
 /// Record this refresh, fold what has elapsed, and project both windows.
@@ -215,6 +265,7 @@ pub fn build_view(
     session: &SessionReport,
     now: Timestamp,
     bypass: bool,
+    fun: Option<String>,
 ) -> StatusView {
     let context = payload.context_window.as_ref();
     StatusView {
@@ -240,6 +291,7 @@ pub fn build_view(
         subagent_count: session.mix.subagent_count,
         subagent_share: session.mix.subagent_share,
         idle: session.idle,
+        fun,
     }
 }
 
@@ -259,5 +311,48 @@ fn window_view(
         rate: report.rate,
         pace: report.pace,
         proj_eta: None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FUN_BUCKET_SEC, pick};
+    use crate::units::Timestamp;
+
+    fn at_bucket(bucket: i64) -> Timestamp {
+        Timestamp::new(bucket as f64 * FUN_BUCKET_SEC)
+    }
+
+    fn lines(texts: &[&str]) -> Vec<String> {
+        texts.iter().map(|text| (*text).to_string()).collect()
+    }
+
+    #[test]
+    fn facts_and_phrases_alternate_and_rotate() {
+        let facts = lines(&["fact one", "fact two"]);
+        let phrases = lines(&["phrase"]);
+        let shown: Vec<String> = (0..5)
+            .map(|bucket| pick(&facts, &phrases, at_bucket(bucket)).expect("something to show"))
+            .collect();
+        assert_eq!(
+            shown,
+            lines(&["fact one", "phrase", "fact two", "phrase", "fact one"])
+        );
+    }
+
+    #[test]
+    fn a_choice_holds_for_the_whole_bucket() {
+        let facts = lines(&["fact one", "fact two"]);
+        let opening = pick(&facts, &[], Timestamp::new(0.0));
+        let closing = pick(&facts, &[], Timestamp::new(FUN_BUCKET_SEC - 1.0));
+        assert_eq!(opening, closing);
+    }
+
+    #[test]
+    fn an_empty_side_falls_through_to_the_other() {
+        let facts = lines(&["fact"]);
+        assert_eq!(pick(&facts, &[], at_bucket(1)).as_deref(), Some("fact"));
+        assert_eq!(pick(&[], &facts, at_bucket(0)).as_deref(), Some("fact"));
+        assert_eq!(pick(&[], &[], at_bucket(0)), None);
     }
 }

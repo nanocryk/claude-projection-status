@@ -5,6 +5,7 @@ pub mod app;
 pub mod color;
 pub mod config;
 pub mod estimate;
+pub mod facts;
 pub mod glyphs;
 pub mod history;
 pub mod input;

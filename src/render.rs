@@ -1,7 +1,8 @@
 //! Status line layout.
 //!
 //! Three lines: the 5h window, the 7d window, then the model with its context
-//! bar. The bars on all three start at the same column.
+//! bar. The bars on all three start at the same column. A fourth is drawn
+//! below them when there is something frivolous to put on it.
 
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
@@ -71,6 +72,8 @@ pub struct StatusView {
     pub subagent_share: f64,
     /// Absent when there is no session to report on at all.
     pub idle: Option<IdleView>,
+    /// The fourth line: a fact or a phrase, of no operational value.
+    pub fun: Option<String>,
 }
 
 /// Time since the prompt cache was last written, against the lifetime it was
@@ -704,7 +707,13 @@ pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
     }
     let line3 = format!("{head}{}{}", " ".repeat(pad), line3_parts.join("  "));
 
-    format!("{line1}\n{line2}\n{line3}")
+    let mut out = format!("{line1}\n{line2}\n{line3}");
+    // Further back than the rest of the line: nothing here is worth reading
+    // before the three above it.
+    if let Some(fun) = view.fun.as_ref().filter(|text| !text.trim().is_empty()) {
+        let _ = write!(out, "\n{}{}{}", color::DIMMER, fun.trim(), color::RESET);
+    }
+    out
 }
 
 #[cfg(test)]
@@ -839,6 +848,31 @@ mod tests {
             10,
         );
         assert_eq!(strip_ansi(&line), "🗓️ 5d20h/7d ▰▱▱▱▱▱▱▱▱▱  3%");
+    }
+
+    #[test]
+    fn the_fourth_line_is_drawn_only_when_there_is_something_on_it() {
+        let bare = StatusView {
+            model: "Opus 5".to_string(),
+            ..StatusView::default()
+        };
+        assert_eq!(
+            render_status_line(&bare, &RenderCtx::default())
+                .lines()
+                .count(),
+            3
+        );
+
+        let with_fun = StatusView {
+            fun: Some("You have worked 71 of the last 168 hours.".to_string()),
+            ..bare
+        };
+        let rendered = render_status_line(&with_fun, &RenderCtx::default());
+        assert_eq!(rendered.lines().count(), 4);
+        assert_eq!(
+            strip_ansi(rendered.lines().nth(3).expect("a fourth line")),
+            "You have worked 71 of the last 168 hours."
+        );
     }
 
     #[test]

@@ -375,6 +375,31 @@ impl Store {
         Ok(())
     }
 
+    /// Every closed hour in a range, with the verdict it was given.
+    pub fn closed_hours_between(
+        &self,
+        from: Timestamp,
+        to: Timestamp,
+    ) -> Result<Vec<(Timestamp, f64)>> {
+        let mut statement = self.conn.prepare(
+            "SELECT at, active FROM closed_hours WHERE at >= ?1 AND at < ?2 ORDER BY at",
+        )?;
+        let rows = statement.query_map(params![from.get(), to.get()], |row| {
+            Ok((Timestamp::new(row.get(0)?), row.get(1)?))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// When each session was first seen, oldest first.
+    pub fn sessions_seen_since(&self, from: Timestamp) -> Result<Vec<Timestamp>> {
+        let mut statement = self
+            .conn
+            .prepare("SELECT seen_at FROM sessions WHERE seen_at >= ?1 ORDER BY seen_at")?;
+        let rows =
+            statement.query_map(params![from.get()], |row| Ok(Timestamp::new(row.get(0)?)))?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     /// Active hours across the closed hours in a range.
     pub fn active_hours_between(&self, from: Timestamp, to: Timestamp) -> Result<f64> {
         let total: Option<f64> = self.conn.query_row(

@@ -84,8 +84,8 @@ date is what a plan hangs on. Each line carries one of the two, never both.
 | Live | `•` | Something was written to the transcript moments ago |
 | Cold | `🥶` | The prompt cache has passed its lifetime |
 | Nudge | `👋` | Idle for over half an hour |
-| Model mix | `62%o 31%s 7%h` | Share of session tokens per model family. Hidden when only one |
-| Subagents | `🐝3 18%` | Subagents spawned, and their share of the session's tokens |
+| Model mix | `🐶62% 🤡31% 🍤7%` | Share of session tokens per model family. Hidden when only one |
+| Subagents | `🐝3–18%` | Subagents spawned, and their share of the session's tokens |
 | Bypass | `[BYPASS]` | Permission prompts are being skipped |
 
 The idle bar drains as the cache decays. Its lifetime is read from the

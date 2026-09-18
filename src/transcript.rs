@@ -157,7 +157,8 @@ impl Record {
     }
 }
 
-fn family_of(model: &str) -> Option<&'static str> {
+/// Letter standing for a model's family, from its id or its display name.
+pub fn family_of(model: &str) -> Option<&'static str> {
     if model.is_empty() || model.starts_with('<') {
         return None;
     }

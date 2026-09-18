@@ -14,7 +14,7 @@ use crate::color;
 use crate::estimate::Confidence;
 use crate::glyphs;
 use crate::slots;
-use crate::transcript::FAMILY_ORDER;
+use crate::transcript::{self, FAMILY_ORDER};
 use crate::units::{Pct, Timestamp};
 use crate::window::WindowKind;
 
@@ -390,7 +390,8 @@ fn format_window(
         kind.label(),
         color::RESET
     );
-    let pad = prefix_width.saturating_sub(visible_len(&prefix));
+    // Columns, not characters: the clock and the calendar are emoji.
+    let pad = prefix_width.saturating_sub(display_width(&prefix));
     prefix.push_str(&" ".repeat(pad));
 
     let bar = build_two_tone_bar(
@@ -626,8 +627,10 @@ fn format_model_stats(
         if visible.len() >= 2 {
             for family in FAMILY_ORDER {
                 if let Some(pct) = visible.get(family) {
+                    // The letter stands in for a family with no glyph.
+                    let mark = glyphs::family_glyph(family).unwrap_or(family);
                     parts.push(format!(
-                        "{}{pct}%{family}{}",
+                        "{}{mark}{pct}%{}",
                         family_color(family),
                         color::RESET
                     ));
@@ -635,7 +638,8 @@ fn format_model_stats(
             }
             for (family, pct) in &visible {
                 if !FAMILY_ORDER.contains(family) {
-                    parts.push(format!("{}{pct}%{family}{}", color::DIM, color::RESET));
+                    let mark = glyphs::family_glyph(family).unwrap_or(family);
+                    parts.push(format!("{}{mark}{pct}%{}", color::DIM, color::RESET));
                 }
             }
         }
@@ -643,8 +647,9 @@ fn format_model_stats(
 
     if subagent_count > 0 {
         let share_pct = round_to_pct(subagent_share);
+        // Joined rather than spaced: the count and the share are one fact.
         let suffix = if share_pct > 0 {
-            format!(" {share_pct}%")
+            format!("–{share_pct}%")
         } else {
             String::new()
         };
@@ -711,11 +716,23 @@ pub fn format_cooldown(resets_at: Option<Timestamp>, now: Timestamp, use_days: b
 }
 
 pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
-    // Both window prefixes get the same width so the bars line up, and line 3
-    // pads the model name to the same column.
+    // Model name stays left-flush so it survives the leading-whitespace strip.
+    let name = strip_context_note(&view.model);
+    // The display name carries the family too, in the case the ids do not use.
+    let mark = transcript::family_of(&name.to_lowercase()).and_then(glyphs::family_glyph);
+    let head = match mark {
+        Some(mark) => format!("{mark} {}{name}{}", color::DIM, color::RESET),
+        None => format!("{}{name}{}", color::DIM, color::RESET),
+    };
+
+    // One column for all three bars, wide enough for whichever line needs the
+    // most. A long model name therefore moves every bar together rather than
+    // stepping its own out of line.
     let prefix_5h = format!("🕒 {}/5h", view.five_hour.cooldown);
     let prefix_7d = format!("{} {}/7d", glyphs::CALENDAR, view.seven_day.cooldown);
-    let prefix_width = visible_len(&prefix_5h).max(visible_len(&prefix_7d));
+    let prefix_width = display_width(&prefix_5h)
+        .max(display_width(&prefix_7d))
+        .max(display_width(&head));
 
     let mut line1 = format_window(WindowKind::FiveHour, &view.five_hour, ctx, prefix_width);
     if view.bypass {
@@ -730,15 +747,9 @@ pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
 
     let line2 = format_window(WindowKind::SevenDay, &view.seven_day, ctx, prefix_width);
 
-    // Model name stays left-flush so it survives the leading-whitespace strip;
-    // a long name pushes the context bar right rather than breaking alignment.
-    let head = format!(
-        "{}{}{}",
-        color::DIM,
-        strip_context_note(&view.model),
-        color::RESET
-    );
-    let pad = (prefix_width + 2).saturating_sub(visible_len(&head)).max(1);
+    let pad = (prefix_width + 1)
+        .saturating_sub(display_width(&head))
+        .max(1);
     let mut line3_parts: Vec<String> = Vec::new();
     if let Some(ctx_pct) = view.ctx_pct.filter(|_| view.ctx_size > 0) {
         line3_parts.push(format!(
@@ -1094,7 +1105,7 @@ mod tests {
             ttl_inherited: false,
             live: false,
         });
-        assert_eq!(line, "Opus 5      ▨▨▨▨□□□□□□ 42%ctx  💤 ▨▨▨▨▨ 45s/1h");
+        assert_eq!(line, "🐶 Opus 5   ▨▨▨▨□□□□□□ 42%ctx  💤 ▨▨▨▨▨ 45s/1h");
     }
 
     #[test]
@@ -1104,14 +1115,14 @@ mod tests {
             cache_ttl: Some(300),
             ..IdleView::default()
         });
-        assert_eq!(drained, "Opus 5      ▨▨▨▨□□□□□□ 42%ctx  💤 ▨▨□□□ 3m/5m");
+        assert_eq!(drained, "🐶 Opus 5   ▨▨▨▨□□□□□□ 42%ctx  💤 ▨▨□□□ 3m/5m");
 
         let cold = idle_line(IdleView {
             seconds: Some(5400.0),
             cache_ttl: Some(300),
             ..IdleView::default()
         });
-        assert_eq!(cold, "Opus 5      ▨▨▨▨□□□□□□ 42%ctx  🥶 □□□□□ 1h30m/5m 👋");
+        assert_eq!(cold, "🐶 Opus 5   ▨▨▨▨□□□□□□ 42%ctx  🥶 □□□□□ 1h30m/5m 👋");
     }
 
     #[test]
@@ -1122,7 +1133,7 @@ mod tests {
             ttl_inherited: false,
             live: true,
         });
-        assert_eq!(line, "Opus 5      ▨▨▨▨□□□□□□ 42%ctx  💤 ▨▨▨▨▨ 04s/1h •");
+        assert_eq!(line, "🐶 Opus 5   ▨▨▨▨□□□□□□ 42%ctx  💤 ▨▨▨▨▨ 04s/1h •");
     }
 
     #[test]
@@ -1133,7 +1144,7 @@ mod tests {
             ttl_inherited: true,
             live: false,
         });
-        assert_eq!(line, "Opus 5      ▨▨▨▨□□□□□□ 42%ctx  💤 □□□□□  --");
+        assert_eq!(line, "🐶 Opus 5   ▨▨▨▨□□□□□□ 42%ctx  💤 □□□□□  --");
     }
 
     #[test]

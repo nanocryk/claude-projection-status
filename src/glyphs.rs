@@ -46,6 +46,21 @@ pub const WAVE: char = '👋';
 /// Something was written to the transcript moments ago.
 pub const LIVE: char = '•';
 
+/// Stand-in for a model family, by the letter the transcript reader gives it.
+///
+/// A family with no glyph of its own keeps its name and its letter.
+pub fn family_glyph(family: &str) -> Option<&'static str> {
+    match family {
+        "o" => Some("🐶"),
+        "s" => Some("🤡"),
+        "h" => Some("🍤"),
+        "f" => Some("🗿"),
+        // What the transcript reader calls a model it does not recognise.
+        "?" => Some("👽"),
+        _ => None,
+    }
+}
+
 /// Clock face for one o'clock; `+k` gives `(k + 1)` o'clock.
 const CLOCK_BASE: u32 = 0x1f550;
 

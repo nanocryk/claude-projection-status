@@ -9,6 +9,7 @@ use std::fmt::Write as _;
 use serde::Deserialize;
 
 use crate::color;
+use crate::estimate::Confidence;
 use crate::glyphs;
 use crate::units::{Pct, Timestamp};
 use crate::window::{Sample, WindowKind};
@@ -24,15 +25,6 @@ const SPARK_BUCKETS: usize = 8;
 const SPARK_PEAK_FLOOR: f64 = 0.5;
 /// Idle past the cache TTL earns the long-idle nudge after this long.
 const NUDGE_AFTER_SEC: f64 = 1800.0;
-
-/// How much of the projection the data supports, rendered as emphasis.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Confidence {
-    Low,
-    Medium,
-    High,
-}
 
 /// Everything one window contributes to the line it owns.
 #[derive(Debug, Default, Deserialize)]

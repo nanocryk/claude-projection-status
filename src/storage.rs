@@ -261,6 +261,26 @@ impl Store {
         Ok(out)
     }
 
+    /// Window instances whose reset has passed, with the usage they ended on.
+    ///
+    /// `after` excludes instances already accounted for.
+    pub fn completed_instances(
+        &self,
+        kind: WindowKind,
+        after: Timestamp,
+        now: Timestamp,
+    ) -> Result<Vec<(Timestamp, Pct)>> {
+        let mut statement = self.conn.prepare(
+            "SELECT resets_at, MAX(pct) FROM samples
+             WHERE window_kind = ?1 AND resets_at > ?2 AND resets_at <= ?3
+             GROUP BY resets_at ORDER BY resets_at",
+        )?;
+        let rows = statement.query_map(params![kind.label(), after.get(), now.get()], |row| {
+            Ok((Timestamp::new(row.get(0)?), Pct::new(row.get(1)?)))
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     /// Most recent reading a session reported for a window.
     pub fn latest_pct(&self, kind: WindowKind, session: &str) -> Result<Option<Pct>> {
         Ok(self

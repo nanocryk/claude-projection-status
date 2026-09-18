@@ -76,7 +76,11 @@ disagree with each other:
 
 - `A_remaining = sum over remaining slots of a(h,d) * slot_fraction`
 - time to 100%: the point in that walk where accumulated usage crosses 100
-- confidence: relative width of the posterior, `1 / sqrt(shape)`
+- confidence: relative width of the posterior, `1 / sqrt(evidence)`, where
+  evidence counts only observed budget (the mass behind the prior, plus what
+  this window has spent). A cold start's invented prior contributes none, so a
+  first run reads as low confidence rather than borrowing certainty from an
+  assumption.
 
 The displayed rates come from the same estimate: `%/h` is `lambda_hat`, and
 `%/d` is `lambda_hat` times the expected active hours in a day.

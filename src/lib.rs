@@ -3,8 +3,11 @@
 
 pub mod color;
 pub mod config;
+pub mod estimate;
 pub mod glyphs;
+pub mod history;
 pub mod input;
+pub mod profile;
 pub mod render;
 pub mod slots;
 pub mod storage;

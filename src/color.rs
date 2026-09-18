@@ -11,7 +11,3 @@ pub const DIM: &str = "\x1b[38;5;249m";
 pub const RESET: &str = "\x1b[0m";
 /// Foreground of the consumed bar segment.
 pub const FG_WHITE: &str = "\x1b[97m";
-/// Sparkline bucket with no data behind it.
-pub const SPARK_GAP: &str = "\x1b[38;5;238m";
-/// Sparkline bucket below the warning level.
-pub const SPARK_LOW: &str = "\x1b[38;5;252m";

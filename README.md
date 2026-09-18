@@ -71,7 +71,6 @@ date is what a plan hangs on. Each line carries one of the two, never both.
 | Projection | `⇒ 72%` | Expected at reset. Bold when well supported, faint when barely |
 | Rate | `80%/h`, `14%/d` | Percent of the budget per working hour, and per day |
 | Pace | `🏃 64%` | The rate over the fastest the remaining budget affords. 100% lands exactly on the limit at reset |
-| Sparkline | `▁▂▅▃▁▁▂▁` | Usage per bucket across the window |
 | Work left | `⌛ 0.4h` | 5h line: hours of work the budget still buys. Idle time does not consume it. Absent below 100% pace |
 | Deadline | `⏰ Mon 18h` | 7d line: when the limit lands, on the local clock. Absent below 100% pace |
 | Context | `55%ctx` | How full the conversation's context window is |

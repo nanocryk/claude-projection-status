@@ -13,14 +13,13 @@ use crate::render::{self, IdleView, StatusView, WindowView};
 use crate::storage::{self, Store};
 use crate::transcript;
 use crate::units::{Pct, Timestamp};
-use crate::window::{Sample, WindowKind, WindowState};
+use crate::window::{WindowKind, WindowState};
 
 /// What one window contributes beyond what the payload already states.
 #[derive(Debug, Default)]
 pub struct WindowReport {
     pub projected: Option<Pct>,
     pub confidence: Option<Confidence>,
-    pub samples: Vec<Sample>,
     /// Percent per hour for the 5h window, per day for the 7d one.
     pub rate: Option<f64>,
     /// Intensity over the one the remaining budget affords.
@@ -203,7 +202,6 @@ fn report_for<Tz: TimeZone>(
     Ok(WindowReport {
         projected: Some(estimate.projected),
         confidence: Some(estimate.confidence),
-        samples,
         rate: Some(rate),
         pace: estimate.pace,
         work_left,
@@ -257,7 +255,6 @@ fn window_view(
         cooldown: render::format_cooldown(state.map(|state| state.resets_at), now, use_days),
         time_to_100: report.time_to_100.clone(),
         work_left: report.work_left.clone(),
-        samples: report.samples.clone(),
         confidence: report.confidence,
         rate: report.rate,
         pace: report.pace,

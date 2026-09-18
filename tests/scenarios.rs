@@ -32,6 +32,8 @@ struct Refresh {
     analysis: Analysis,
     session: SessionReport,
     line: String,
+    /// Readings the store holds for each window instance, 5h first.
+    sample_counts: [usize; 2],
 }
 
 impl Refresh {
@@ -48,7 +50,10 @@ impl Refresh {
     }
 
     fn samples(&self, kind: WindowKind) -> usize {
-        self.analysis.window(kind).samples.len()
+        match kind {
+            WindowKind::FiveHour => self.sample_counts[0],
+            WindowKind::SevenDay => self.sample_counts[1],
+        }
     }
 }
 
@@ -98,11 +103,23 @@ impl Harness {
             app::read_session(&self.store, &payload, self.projects.path(), now).expect("session");
         let view = app::build_view(&payload, &analysis, &session_report, now, false);
         let line = render::render_status_line(&view, &RenderCtx::default());
+        let sample_counts = [
+            self.stored_samples(WindowKind::FiveHour, five_hour.1),
+            self.stored_samples(WindowKind::SevenDay, seven_day.1),
+        ];
         Refresh {
             analysis,
             session: session_report,
             line,
+            sample_counts,
         }
+    }
+
+    fn stored_samples(&self, kind: WindowKind, resets_at: f64) -> usize {
+        self.store
+            .window_samples(kind, Timestamp::new(resets_at))
+            .expect("window samples")
+            .len()
     }
 
     /// Write a session transcript as Claude Code would.

@@ -15,17 +15,13 @@ use crate::glyphs;
 use crate::slots;
 use crate::transcript::FAMILY_ORDER;
 use crate::units::{Pct, Timestamp};
-use crate::window::{Sample, WindowKind};
+use crate::window::WindowKind;
 
 const BAR_WIDTH: usize = 10;
 /// Visible width of the `⇒ NNN%` column. Held as blanks when a window has no
 /// projection, so the segments after it stay aligned with the other window.
 const PROJ_COLUMN_WIDTH: usize = 6;
 const IDLE_BAR_WIDTH: usize = 5;
-const SPARK_BUCKETS: usize = 8;
-/// A sparkline never scales to less than this, so a quiet window stays flat
-/// instead of amplifying rounding noise into full-height bars.
-const SPARK_PEAK_FLOOR: f64 = 0.5;
 /// Idle past the cache TTL earns the long-idle nudge after this long.
 const NUDGE_AFTER_SEC: f64 = 1800.0;
 /// Pace at which the figure turns yellow, short of the limit it is heading for.
@@ -45,7 +41,6 @@ pub struct WindowView {
     pub time_to_100: Option<String>,
     /// Preformatted work the remaining budget still buys.
     pub work_left: Option<String>,
-    pub samples: Vec<Sample>,
     pub confidence: Option<Confidence>,
     /// Percent per hour for the 5h window, per day for the 7d one.
     pub rate: Option<f64>,
@@ -114,14 +109,6 @@ fn proj_thresholds(kind: WindowKind) -> (f64, f64) {
     match kind {
         WindowKind::FiveHour => (75.0, 90.0),
         WindowKind::SevenDay => (85.0, 95.0),
-    }
-}
-
-/// How far back the sparkline reaches.
-fn spark_lookback_sec(kind: WindowKind) -> f64 {
-    match kind {
-        WindowKind::FiveHour => 5.0 * 3600.0,
-        WindowKind::SevenDay => 24.0 * 3600.0,
     }
 }
 
@@ -248,83 +235,6 @@ fn build_two_tone_bar(pct: f64, projected: Option<f64>, warn: f64, crit: f64) ->
     bar
 }
 
-/// Usage increase per bucket over the lookback window. Buckets older than the
-/// first sample render as a dim baseline rather than as zero activity.
-fn build_sparkline(samples: &[Sample], lookback_sec: f64) -> String {
-    if samples.len() < 2 {
-        return String::new();
-    }
-    let now = samples[samples.len() - 1].at.get();
-    let start = now - lookback_sec;
-    let bucket_dur = lookback_sec / SPARK_BUCKETS as f64;
-    let earliest = samples[0];
-
-    let value_at = |instant: f64| -> f64 {
-        samples
-            .iter()
-            .rev()
-            .find(|sample| sample.at.get() <= instant)
-            .map(|sample| sample.pct.get())
-            .unwrap_or(earliest.pct.get())
-    };
-
-    let mut deltas: Vec<Option<f64>> = Vec::with_capacity(SPARK_BUCKETS);
-    for index in 0..SPARK_BUCKETS {
-        let bucket_start = start + index as f64 * bucket_dur;
-        let bucket_end = bucket_start + bucket_dur;
-        if bucket_end < earliest.at.get() {
-            deltas.push(None);
-            continue;
-        }
-        deltas.push(Some(
-            (value_at(bucket_end) - value_at(bucket_start)).max(0.0),
-        ));
-    }
-
-    let peak = deltas
-        .iter()
-        .flatten()
-        .copied()
-        .fold(f64::NEG_INFINITY, f64::max);
-    if !peak.is_finite() {
-        return String::new();
-    }
-    let peak = peak.max(SPARK_PEAK_FLOOR);
-
-    let mut out = String::new();
-    for delta in &deltas {
-        match delta {
-            None => {
-                let _ = write!(
-                    out,
-                    "{}{}{}",
-                    color::SPARK_GAP,
-                    glyphs::SPARK_LEVELS[0],
-                    color::RESET
-                );
-            }
-            Some(value) => {
-                let level = ((value / peak * 6.0 + 0.5) as usize).min(6);
-                let level_color = if level >= 5 {
-                    color::RED
-                } else if level >= 3 {
-                    color::YELLOW
-                } else {
-                    color::SPARK_LOW
-                };
-                let _ = write!(
-                    out,
-                    "{}{}{}",
-                    level_color,
-                    glyphs::SPARK_LEVELS[level],
-                    color::RESET
-                );
-            }
-        }
-    }
-    out
-}
-
 fn format_rate(kind: WindowKind, rate: Option<f64>) -> String {
     let Some(rate) = rate else {
         return String::new();
@@ -425,13 +335,6 @@ fn format_window(
         parts.push(" ".repeat(PROJ_COLUMN_WIDTH));
     }
 
-    if !view.samples.is_empty() {
-        let spark = build_sparkline(&view.samples, spark_lookback_sec(kind));
-        if !spark.is_empty() {
-            parts.push(spark);
-        }
-    }
-
     let rate = format_rate(kind, view.rate);
     if !rate.is_empty() {
         parts.push(rate);
@@ -463,7 +366,9 @@ fn format_window(
         ));
     }
 
-    parts.join(" ")
+    // The projection column holds blanks to keep the two windows aligned; with
+    // nothing after it on this line they are only trailing whitespace.
+    parts.join(" ").trim_end().to_string()
 }
 
 /// Time since the conversation last yielded to the user, against the prompt
@@ -768,23 +673,13 @@ pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        Confidence, IdleView, RenderCtx, StatusView, WindowView, build_sparkline,
-        build_two_tone_bar, display_width, format_cooldown, format_deadline, format_window,
-        render_status_line, strip_context_note, visible_len,
+        Confidence, IdleView, RenderCtx, StatusView, WindowView, build_two_tone_bar, display_width,
+        format_cooldown, format_deadline, format_window, render_status_line, strip_context_note,
+        visible_len,
     };
     use crate::units::{Pct, Timestamp};
-    use crate::window::{Sample, WindowKind};
+    use crate::window::WindowKind;
     use chrono::FixedOffset;
-
-    fn samples(points: &[(f64, f64)]) -> Vec<Sample> {
-        points
-            .iter()
-            .map(|(at, pct)| Sample {
-                at: Timestamp::new(*at),
-                pct: Pct::new(*pct),
-            })
-            .collect()
-    }
 
     fn strip_ansi(text: &str) -> String {
         let mut out = String::new();
@@ -831,19 +726,6 @@ mod tests {
     }
 
     #[test]
-    fn sparkline_marks_buckets_older_than_the_first_sample() {
-        let spark = build_sparkline(&samples(&[(9000.0, 1.0), (18000.0, 4.0)]), 18000.0);
-        let plain = strip_ansi(&spark);
-        assert_eq!(plain.chars().count(), 8);
-        assert!(plain.starts_with('▁'));
-    }
-
-    #[test]
-    fn sparkline_needs_two_samples() {
-        assert_eq!(build_sparkline(&samples(&[(1.0, 1.0)]), 3600.0), "");
-    }
-
-    #[test]
     fn cooldown_is_right_aligned_in_five_columns() {
         let now = Timestamp::new(1_000_000.0);
         assert_eq!(format_cooldown(None, now, false), "   --");
@@ -878,6 +760,8 @@ mod tests {
 
     #[test]
     fn the_projection_column_holds_its_width_when_empty() {
+        // Both carry a rate, so what is measured is whether the segment after
+        // the column lands in the same place either way.
         let with_projection = format_window(
             WindowKind::FiveHour,
             &WindowView {
@@ -885,6 +769,7 @@ mod tests {
                 projected: Some(Pct::new(23.0)),
                 cooldown: "4h32m".to_string(),
                 confidence: Some(Confidence::Medium),
+                rate: Some(8.0),
                 ..WindowView::default()
             },
             &RenderCtx::default(),
@@ -895,12 +780,28 @@ mod tests {
             &WindowView {
                 pct: Some(Pct::new(15.0)),
                 cooldown: "4h32m".to_string(),
+                rate: Some(8.0),
                 ..WindowView::default()
             },
             &RenderCtx::default(),
             10,
         );
         assert_eq!(visible_len(&with_projection), visible_len(&without));
+    }
+
+    #[test]
+    fn a_line_ending_at_the_projection_column_carries_no_trailing_blanks() {
+        let line = format_window(
+            WindowKind::SevenDay,
+            &WindowView {
+                pct: Some(Pct::new(3.0)),
+                cooldown: "5d20h".to_string(),
+                ..WindowView::default()
+            },
+            &RenderCtx::default(),
+            10,
+        );
+        assert_eq!(strip_ansi(&line), "🗓️ 5d20h/7d ▰▱▱▱▱▱▱▱▱▱  3%");
     }
 
     #[test]

@@ -1,13 +1,23 @@
 //! The layout must not drift.
 //!
-//! Each case in `tests/fixtures/render_cases.json` holds a view and the line
-//! the original Python implementation drew for it, captured from that
-//! implementation at commit `ae09abe` before it was replaced. The idle
-//! indicator is deliberately absent from these cases: it moved to line 3, and
-//! its layout is asserted in the renderer's own tests instead.
+//! Each case in `tests/fixtures/render_cases.json` holds a view and the exact
+//! line the renderer draws for it, so an unintended change of column, glyph or
+//! colour fails here. A deliberate one is taken up by running
+//! `cargo test --test render_parity -- --ignored`, which rewrites the captures
+//! from the current renderer.
+//!
+//! The idle indicator is deliberately absent from these cases: it moved to
+//! line 3, and its layout is asserted in the renderer's own tests instead.
 
 use claude_status::render::{RenderCtx, StatusView, render_status_line};
 use serde::Deserialize;
+
+/// Key whose value each case's captured line sits in.
+const EXPECTED_KEY: &str = "\"expected\": \"";
+
+fn fixture_path() -> std::path::PathBuf {
+    std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/render_cases.json")
+}
 
 #[derive(Deserialize)]
 struct Case {
@@ -25,6 +35,35 @@ fn cases() -> Vec<Case> {
 /// ANSI sequences make a failure unreadable; show the escapes.
 fn escaped(text: &str) -> String {
     text.replace('\x1b', "\\e")
+}
+
+/// Rewrite every captured line from the current renderer.
+///
+/// Splices each value in place rather than reserialising the file, so the
+/// views, their order and the formatting around them stay untouched and the
+/// diff shows only what the layout change did.
+#[test]
+#[ignore = "rewrites the fixtures; run when a layout change is intended"]
+fn regenerate_the_captures() {
+    let path = fixture_path();
+    let raw = std::fs::read_to_string(&path).expect("fixtures readable");
+    let mut out = String::with_capacity(raw.len());
+    let mut rest = raw.as_str();
+
+    for case in &cases() {
+        let key = rest.find(EXPECTED_KEY).expect("an expected field per case");
+        let value = key + EXPECTED_KEY.len();
+        let end = value + rest[value..].find('"').expect("a closing quote");
+        // Through serde so the escaping matches what the parser expects back.
+        let rendered =
+            serde_json::to_string(&render_status_line(&case.view, &case.ctx)).expect("a JSON line");
+        out.push_str(&rest[..value]);
+        out.push_str(&rendered[1..rendered.len() - 1]);
+        rest = &rest[end..];
+    }
+    out.push_str(rest);
+
+    std::fs::write(&path, out).expect("fixtures writable");
 }
 
 #[test]

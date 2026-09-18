@@ -10,9 +10,6 @@ pub const PROJ: char = '▰';
 /// Free bar segment.
 pub const EMPTY: char = '▱';
 
-/// Sparkline levels, lowest to highest.
-pub const SPARK_LEVELS: [char; 8] = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-
 /// Spiral calendar pad plus VS16, which forces the emoji presentation.
 pub const CALENDAR: &str = "🗓️";
 pub const PROJ_ARROW: char = '⇒';

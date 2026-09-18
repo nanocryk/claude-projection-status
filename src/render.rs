@@ -596,6 +596,22 @@ fn strip_context_note(model: &str) -> String {
     out
 }
 
+/// Time until the limit is reached, in the compact form the deadline column
+/// uses.
+pub fn format_deadline(seconds: f64) -> String {
+    let minutes = (seconds / 60.0).max(0.0) as u64;
+    if minutes < 1 {
+        return "<1m".to_string();
+    }
+    if minutes >= 1440 {
+        return format!("{}d{:02}h", minutes / 1440, (minutes % 1440) / 60);
+    }
+    if minutes >= 60 {
+        return format!("{}h{:02}m", minutes / 60, minutes % 60);
+    }
+    format!("{minutes}m")
+}
+
 /// Time until a window resets, right-aligned in the five columns the prefix
 /// reserves for it.
 pub fn format_cooldown(resets_at: Option<Timestamp>, now: Timestamp, use_days: bool) -> String {

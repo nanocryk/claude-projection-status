@@ -3,15 +3,16 @@
 use std::io::Read as _;
 use std::process::ExitCode;
 
-use chrono::{DateTime, Local, TimeZone as _, Timelike as _};
+use chrono::{DateTime, Local, TimeZone, Timelike as _};
 
+use claude_status::app::{self, Analysis};
 use claude_status::config::{self, Config};
 use claude_status::input::Payload;
-use claude_status::render::{self, RenderCtx, StatusView, WindowView};
+use claude_status::render::{self, RenderCtx};
 use claude_status::slots::SlotId;
 use claude_status::storage::{Store, Summary};
 use claude_status::units::Timestamp;
-use claude_status::window::{WindowKind, WindowState};
+use claude_status::window::WindowKind;
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -34,14 +35,15 @@ fn print_status_line() {
     let payload = Payload::parse(&read_stdin());
     let now = now();
 
-    // A storage failure must not cost the user their status line.
-    if let Err(error) = record(&config, &payload, now) {
+    // A storage failure costs the projections, never the status line.
+    let analysis = analyse(&config, &payload, now).unwrap_or_else(|error| {
         if config.debug {
             eprintln!("claude-status: {error}");
         }
-    }
+        Analysis::default()
+    });
 
-    let view = build_view(&payload, now);
+    let view = app::build_view(&payload, &analysis, now, config::bypass_enabled());
     let ctx = RenderCtx {
         local_hour: Local::now().hour(),
         warning_pct: config.warning_pct,
@@ -50,48 +52,19 @@ fn print_status_line() {
     println!("{}", render::render_status_line(&view, &ctx));
 }
 
-fn record(
+fn analyse(
     config: &Config,
     payload: &Payload,
     now: Timestamp,
-) -> claude_status::storage::Result<()> {
+) -> claude_status::storage::Result<Analysis> {
     let store = Store::open(&config.db_path(), now)?;
-    for kind in WindowKind::ALL {
-        if let Some(state) = payload.window(kind) {
-            store.record(kind, state, payload.session_id(), now)?;
-        }
-    }
-    store.prune_if_due(now, config.retention_days)?;
-    Ok(())
+    app::analyse(&store, payload, config.retention_days, now, &Local)
 }
 
 fn read_stdin() -> String {
     let mut raw = String::new();
     let _ = std::io::stdin().read_to_string(&mut raw);
     raw
-}
-
-fn build_view(payload: &Payload, now: Timestamp) -> StatusView {
-    let context = payload.context_window.as_ref();
-    StatusView {
-        five_hour: window_view(payload.window(WindowKind::FiveHour), now, false),
-        seven_day: window_view(payload.window(WindowKind::SevenDay), now, true),
-        model: payload.model_name(),
-        ctx_pct: context.and_then(|window| window.used_percentage),
-        ctx_size: context
-            .and_then(|window| window.context_window_size)
-            .unwrap_or(0),
-        bypass: config::bypass_enabled(),
-        ..StatusView::default()
-    }
-}
-
-fn window_view(state: Option<WindowState>, now: Timestamp, use_days: bool) -> WindowView {
-    WindowView {
-        pct: state.map(|state| state.used),
-        cooldown: render::format_cooldown(state.map(|state| state.resets_at), now, use_days),
-        ..WindowView::default()
-    }
 }
 
 /// `check-threshold --session-id <id> --window <5h|7d> --threshold <pct>`

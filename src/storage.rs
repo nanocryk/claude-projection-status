@@ -45,6 +45,11 @@ CREATE TABLE IF NOT EXISTS slots (
     PRIMARY KEY (weekday, hour)
 );
 
+CREATE TABLE IF NOT EXISTS closed_hours (
+    at REAL PRIMARY KEY,
+    active REAL NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS priors (
     window_kind TEXT PRIMARY KEY,
     lambda REAL NOT NULL,
@@ -296,9 +301,14 @@ impl Store {
     }
 
     pub fn prune(&self, before: Timestamp) -> Result<usize> {
-        Ok(self
+        let removed = self
             .conn
-            .execute("DELETE FROM samples WHERE at < ?1", params![before.get()])?)
+            .execute("DELETE FROM samples WHERE at < ?1", params![before.get()])?;
+        self.conn.execute(
+            "DELETE FROM closed_hours WHERE at < ?1",
+            params![before.get()],
+        )?;
+        Ok(removed)
     }
 
     /// Prune at most once a day, so a refresh every few seconds does not
@@ -342,6 +352,29 @@ impl Store {
             params![i64::from(slot.weekday), i64::from(slot.hour), active],
         )?;
         Ok(())
+    }
+
+    /// Remember how much of one elapsed hour was spent working.
+    ///
+    /// Judging an hour once, when it closes, keeps every later reader of that
+    /// hour in agreement and saves rescanning the readings behind it.
+    pub fn record_closed_hour(&self, at: Timestamp, active: f64) -> Result<()> {
+        self.conn.execute(
+            "INSERT INTO closed_hours (at, active) VALUES (?1, ?2)
+             ON CONFLICT(at) DO UPDATE SET active = excluded.active",
+            params![at.get(), active],
+        )?;
+        Ok(())
+    }
+
+    /// Active hours across the closed hours in a range.
+    pub fn active_hours_between(&self, from: Timestamp, to: Timestamp) -> Result<f64> {
+        let total: Option<f64> = self.conn.query_row(
+            "SELECT SUM(active) FROM closed_hours WHERE at >= ?1 AND at < ?2",
+            params![from.get(), to.get()],
+            |row| row.get(0),
+        )?;
+        Ok(total.unwrap_or(0.0))
     }
 
     /// Scale every counter, ageing the profile toward the present.

@@ -49,8 +49,11 @@ pub struct Inputs<'a> {
     pub profile: &'a Profile,
     /// Intensity carried over from completed windows of the same kind.
     pub prior: Option<Prior>,
-    /// Active hours observed since this window opened.
-    pub active_elapsed: ActiveHours,
+    /// Budget spent over the stretch of this window that was watched. Usage
+    /// from before the first reading is not evidence of anything.
+    pub observed_used: Pct,
+    /// Active hours across that same watched stretch.
+    pub active_observed: ActiveHours,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -93,15 +96,20 @@ pub fn project<Tz: TimeZone>(inputs: &Inputs<'_>, zone: &Tz) -> Estimate {
     // windows are damped in proportion rather than by a constant.
     let prior_weight =
         ActiveHours::new(PRIOR_SHARE * active_total.get()).at_least(MIN_PRIOR_WEIGHT);
-    // With nothing to go on, assume the pattern that exactly spends the
-    // budget: the projection then reads as on track, at low confidence.
+    // With nothing to go on, assume the intensity that spends one window's
+    // budget over one window's working hours. A fresh window then reads as on
+    // budget, and one already ahead of that pace reads above it. Anchoring on
+    // the whole window rather than on what is left keeps the assumption from
+    // growing as the window empties.
     let prior_intensity = inputs
         .prior
         .map(|prior| PctPerActiveHour::new(prior.lambda))
         .unwrap_or_else(|| Pct::new(100.0) / active_total);
 
-    let intensity =
-        (prior_intensity * prior_weight + inputs.used) / (prior_weight + inputs.active_elapsed);
+    // Evidence is what was spent while watching, over the working hours that
+    // were watched. Both sides describe the same stretch of the window.
+    let intensity = (prior_intensity * prior_weight + inputs.observed_used)
+        / (prior_weight + inputs.active_observed);
     let projected = inputs.used + intensity * active_remaining;
 
     Estimate {
@@ -121,13 +129,14 @@ pub fn project<Tz: TimeZone>(inputs: &Inputs<'_>, zone: &Tz) -> Estimate {
 }
 
 /// Confidence rests on observed budget only: the mass behind the prior plus
-/// what this window has spent. A cold start's invented prior adds none.
+/// what this window was watched spending. A cold start's invented prior adds
+/// none, and neither does usage from before the first reading.
 fn confidence_of(inputs: &Inputs<'_>) -> Confidence {
     let prior_mass = inputs
         .prior
         .map(|prior| prior.lambda * prior.weight)
         .unwrap_or(0.0);
-    let evidence = prior_mass + inputs.used.get();
+    let evidence = prior_mass + inputs.observed_used.get();
     if evidence <= 0.0 {
         return Confidence::Low;
     }
@@ -219,7 +228,9 @@ mod tests {
                 now,
                 profile: &profile,
                 prior,
-                active_elapsed: ActiveHours::new(elapsed_active),
+                // The whole window was watched, the common case.
+                observed_used: Pct::new(used),
+                active_observed: ActiveHours::new(elapsed_active),
             },
             &utc(),
         )
@@ -421,7 +432,8 @@ mod tests {
                     lambda: 9.0,
                     weight: 20.0,
                 }),
-                active_elapsed: ActiveHours::new(2.0),
+                observed_used: Pct::new(20.0),
+                active_observed: ActiveHours::new(2.0),
             },
             &utc(),
         );

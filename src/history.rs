@@ -22,9 +22,8 @@ const ACTIVITY_WINDOW: WindowKind = WindowKind::FiveHour;
 /// Bring the profile and the priors up to date, and return the profile.
 pub fn refresh<Tz: TimeZone>(store: &Store, now: Timestamp, zone: &Tz) -> Result<Profile> {
     close_elapsed_slots(store, now, zone)?;
-    let profile = Profile::from_counts(&store.slot_counts()?);
-    fold_completed_windows(store, &profile, now, zone)?;
-    Ok(profile)
+    fold_completed_windows(store, now)?;
+    Ok(Profile::from_counts(&store.slot_counts()?))
 }
 
 /// Fold every slot that has fully elapsed into the profile's counters.
@@ -61,31 +60,47 @@ fn close_elapsed_slots<Tz: TimeZone>(store: &Store, now: Timestamp, zone: &Tz) -
 
     for (chunk, weight) in chunks.iter().zip(&weights) {
         store.add_slot_occurrence(chunk.slot, *weight)?;
+        store.record_closed_hour(chunk.from, *weight)?;
     }
     store.set_meta(META_CLOSED_THROUGH, boundary.get())?;
     Ok(())
 }
 
-/// Active hours observed since a window opened.
-pub fn active_hours_so_far<Tz: TimeZone>(
+/// Active hours between an instant and now.
+///
+/// Hours that have closed were judged once and are read back; only the hour in
+/// progress is measured from the readings themselves.
+pub fn active_hours_since<Tz: TimeZone>(
     store: &Store,
-    kind: WindowKind,
-    resets_at: Timestamp,
+    from: Timestamp,
     now: Timestamp,
     profile: &Profile,
     zone: &Tz,
 ) -> Result<ActiveHours> {
-    let opened_at = kind.started_at(resets_at);
+    let opened_at = from;
     if now.get() <= opened_at.get() {
         return Ok(ActiveHours::new(0.0));
     }
-    let samples = store.samples_between(
-        ACTIVITY_WINDOW,
-        Timestamp::new(opened_at.get() - LOOKBACK_SEC),
-        now,
-    )?;
-    let chunks = slots::chunks(opened_at, now, zone);
-    Ok(profile::observed_active_hours(&chunks, &samples, profile))
+    let closed_through = store
+        .meta(META_CLOSED_THROUGH)?
+        .map(Timestamp::new)
+        .unwrap_or(now);
+    let closed = store.active_hours_between(opened_at, closed_through)?;
+
+    let in_progress_from = closed_through.later_of(opened_at);
+    let in_progress = if now.get() > in_progress_from.get() {
+        let samples = store.samples_between(
+            ACTIVITY_WINDOW,
+            Timestamp::new(in_progress_from.get() - LOOKBACK_SEC),
+            now,
+        )?;
+        let chunks = slots::chunks(in_progress_from, now, zone);
+        profile::observed_active_hours(&chunks, &samples, profile).get()
+    } else {
+        0.0
+    };
+
+    Ok(ActiveHours::new(closed + in_progress))
 }
 
 fn covered_key(kind: WindowKind) -> String {
@@ -97,12 +112,7 @@ fn updated_key(kind: WindowKind) -> String {
 }
 
 /// Carry each finished window's intensity into the prior for its kind.
-fn fold_completed_windows<Tz: TimeZone>(
-    store: &Store,
-    profile: &Profile,
-    now: Timestamp,
-    zone: &Tz,
-) -> Result<()> {
+fn fold_completed_windows(store: &Store, now: Timestamp) -> Result<()> {
     for kind in WindowKind::ALL {
         let covered = Timestamp::new(store.meta(&covered_key(kind))?.unwrap_or(0.0));
         let instances = store.completed_instances(kind, covered, now)?;
@@ -120,14 +130,12 @@ fn fold_completed_windows<Tz: TimeZone>(
         for (resets_at, final_pct) in instances {
             latest = resets_at;
             let opened_at = kind.started_at(resets_at);
-            let samples = store.samples_between(ACTIVITY_WINDOW, opened_at, resets_at)?;
-            let chunks = slots::chunks(opened_at, resets_at, zone);
-            let active = profile::observed_active_hours(&chunks, &samples, profile);
-            if active.get() <= 0.0 {
+            let active = store.active_hours_between(opened_at, resets_at)?;
+            if active <= 0.0 {
                 continue;
             }
             let mass = intensity * weight + final_pct.get();
-            weight += active.get();
+            weight += active;
             intensity = mass / weight;
         }
 

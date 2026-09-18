@@ -121,8 +121,17 @@ impl Simulation {
         };
         let now = Timestamp::new(at);
         let resets_at = Timestamp::new(resets_at);
-        let active_elapsed =
-            history::active_hours_so_far(&self.store, kind, resets_at, now, profile, &utc())
+        let samples = self
+            .store
+            .window_samples(kind, resets_at)
+            .expect("window samples");
+        let watched_from = samples.first().map(|sample| sample.at).unwrap_or(now);
+        let observed_used = match (samples.first(), samples.last()) {
+            (Some(first), Some(last)) => last.pct - first.pct,
+            _ => Pct::new(0.0),
+        };
+        let active_observed =
+            history::active_hours_since(&self.store, watched_from, now, profile, &utc())
                 .expect("active hours");
         project(
             &Inputs {
@@ -132,7 +141,8 @@ impl Simulation {
                 now,
                 profile,
                 prior: self.store.prior(kind).expect("prior"),
-                active_elapsed,
+                observed_used,
+                active_observed,
             },
             &utc(),
         )

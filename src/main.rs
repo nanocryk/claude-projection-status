@@ -55,6 +55,7 @@ fn print_status_line() {
         local_hour: Local::now().hour(),
         warning_pct: config.warning_pct,
         critical_pct: config.critical_pct,
+        bars: config.bar_glyphs,
     };
     println!("{}", render::render_status_line(&view, &ctx));
 }

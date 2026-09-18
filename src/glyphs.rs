@@ -4,11 +4,17 @@
 //! layout code.
 
 /// Consumed bar segment.
-pub const FILL: char = '▰';
+///
+/// Geometric Shapes carry an ambiguous cell width, so a font missing them is
+/// substituted from a proportional one and the segments overlap. Squares are
+/// covered widely enough to survive that, unlike the rarer shapes of the same
+/// block, and they sit on the text's own line rather than filling the cell.
+/// Overridable through the `bar_glyphs` setting.
+pub const FILL: char = '▨';
 /// Projected bar segment: same shape as [`FILL`], colour differentiates.
-pub const PROJ: char = '▰';
+pub const PROJ: char = '▨';
 /// Free bar segment.
-pub const EMPTY: char = '▱';
+pub const EMPTY: char = '□';
 
 /// Spiral calendar pad plus VS16, which forces the emoji presentation.
 pub const CALENDAR: &str = "🗓️";

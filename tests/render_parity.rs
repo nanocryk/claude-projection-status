@@ -120,7 +120,7 @@ fn bar_column(line: &str) -> Option<usize> {
     let plain: String = strip_ansi(line);
     let offset = plain
         .char_indices()
-        .find(|(_, ch)| *ch == '▰' || *ch == '▱')
+        .find(|(_, ch)| *ch == '▨' || *ch == '□')
         .map(|(index, _)| index)?;
     Some(claude_status::render::display_width(&plain[..offset]))
 }

@@ -92,6 +92,45 @@ pub struct IdleView {
     pub live: bool,
 }
 
+/// The three characters every bar is drawn with.
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(default)]
+pub struct Bars {
+    pub filled: char,
+    /// Usually the same character as [`Bars::filled`], since the colour is
+    /// what tells the two apart.
+    pub projected: char,
+    pub free: char,
+}
+
+impl Default for Bars {
+    fn default() -> Self {
+        Self {
+            filled: glyphs::FILL,
+            projected: glyphs::PROJ,
+            free: glyphs::EMPTY,
+        }
+    }
+}
+
+impl Bars {
+    /// Three characters: spent, projected, free.
+    ///
+    /// Anything else keeps the default, since a half-written setting should
+    /// not produce a half-drawn bar.
+    pub fn parse(text: &str) -> Option<Self> {
+        let mut chars = text.chars();
+        let filled = chars.next()?;
+        let projected = chars.next()?;
+        let free = chars.next()?;
+        chars.next().is_none().then_some(Self {
+            filled,
+            projected,
+            free,
+        })
+    }
+}
+
 /// Values that come from the environment rather than from the payload.
 #[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(default)]
@@ -99,6 +138,7 @@ pub struct RenderCtx {
     pub local_hour: u32,
     pub warning_pct: f64,
     pub critical_pct: f64,
+    pub bars: Bars,
 }
 
 impl Default for RenderCtx {
@@ -107,6 +147,7 @@ impl Default for RenderCtx {
             local_hour: 0,
             warning_pct: 40.0,
             critical_pct: 70.0,
+            bars: Bars::default(),
         }
     }
 }
@@ -193,7 +234,13 @@ fn colored_pct(pct: f64, ctx: &RenderCtx) -> String {
 }
 
 /// Solid for what is used, shaded for what is projected on top, dim for free.
-fn build_two_tone_bar(pct: f64, projected: Option<f64>, warn: f64, crit: f64) -> String {
+fn build_two_tone_bar(
+    pct: f64,
+    projected: Option<f64>,
+    warn: f64,
+    crit: f64,
+    bars: Bars,
+) -> String {
     let mut filled = (pct.clamp(0.0, 100.0) / 100.0 * BAR_WIDTH as f64 + 0.5) as usize;
     if pct > 0.0 && filled == 0 {
         filled = 1;
@@ -217,7 +264,7 @@ fn build_two_tone_bar(pct: f64, projected: Option<f64>, warn: f64, crit: f64) ->
             bar,
             "{}{}{}",
             color::FG_WHITE,
-            glyphs::FILL.to_string().repeat(filled),
+            bars.filled.to_string().repeat(filled),
             color::RESET
         );
     }
@@ -226,7 +273,7 @@ fn build_two_tone_bar(pct: f64, projected: Option<f64>, warn: f64, crit: f64) ->
             bar,
             "{}{}{}",
             proj_color,
-            glyphs::PROJ.to_string().repeat(proj_filled),
+            bars.projected.to_string().repeat(proj_filled),
             color::RESET
         );
     }
@@ -234,8 +281,8 @@ fn build_two_tone_bar(pct: f64, projected: Option<f64>, warn: f64, crit: f64) ->
         let _ = write!(
             bar,
             "{}{}{}",
-            color::DIM,
-            glyphs::EMPTY.to_string().repeat(empty),
+            color::FAINT,
+            bars.free.to_string().repeat(empty),
             color::RESET
         );
     }
@@ -346,7 +393,13 @@ fn format_window(
     let pad = prefix_width.saturating_sub(visible_len(&prefix));
     prefix.push_str(&" ".repeat(pad));
 
-    let bar = build_two_tone_bar(pct.get(), view.projected.map(Pct::get), warn, crit);
+    let bar = build_two_tone_bar(
+        pct.get(),
+        view.projected.map(Pct::get),
+        warn,
+        crit,
+        ctx.bars,
+    );
     let mut parts = vec![format!("{prefix} {bar}{}", colored_pct(pct.get(), ctx))];
 
     if let Some(projected) = view.projected {
@@ -414,15 +467,15 @@ fn format_window(
 /// Time since the conversation last yielded to the user, against the prompt
 /// cache TTL: the bar drains as the cache decays, and the tag names the TTL
 /// the client is using.
-fn format_idle(idle: &IdleView) -> String {
+fn format_idle(idle: &IdleView, bars: Bars) -> String {
     let Some(idle_sec) = idle.seconds else {
         // Nothing to anchor on. The block holds its place with an empty bar,
         // so an unreadable transcript cannot be mistaken for a warm cache.
         return format!(
             "{} {}{}{} {} --{}",
             glyphs::IDLE,
-            color::DIM,
-            glyphs::EMPTY.to_string().repeat(IDLE_BAR_WIDTH),
+            color::FAINT,
+            bars.free.to_string().repeat(IDLE_BAR_WIDTH),
             color::RESET,
             color::DIM,
             color::RESET
@@ -470,7 +523,7 @@ fn format_idle(idle: &IdleView) -> String {
         let _ = write!(
             bar,
             "{tint}{}{}",
-            glyphs::FILL.to_string().repeat(filled),
+            bars.filled.to_string().repeat(filled),
             color::RESET
         );
     }
@@ -478,8 +531,8 @@ fn format_idle(idle: &IdleView) -> String {
         let _ = write!(
             bar,
             "{}{}{}",
-            color::DIM,
-            glyphs::EMPTY.to_string().repeat(empty),
+            color::FAINT,
+            bars.free.to_string().repeat(empty),
             color::RESET
         );
     }
@@ -504,7 +557,7 @@ fn format_idle(idle: &IdleView) -> String {
     format!("{glyph} {bar} {bold}{tint}{time_str}{tag}{live}{nudge}")
 }
 
-fn build_ctx_bar(ctx_pct: f64) -> String {
+fn build_ctx_bar(ctx_pct: f64, bars: Bars) -> String {
     let mut filled = (ctx_pct.clamp(0.0, 100.0) / 100.0 * BAR_WIDTH as f64 + 0.5) as usize;
     if ctx_pct > 0.0 && filled == 0 {
         filled = 1;
@@ -516,7 +569,7 @@ fn build_ctx_bar(ctx_pct: f64) -> String {
         let _ = write!(
             bar,
             "{tint}{}{}",
-            glyphs::FILL.to_string().repeat(filled),
+            bars.filled.to_string().repeat(filled),
             color::RESET
         );
     }
@@ -524,8 +577,8 @@ fn build_ctx_bar(ctx_pct: f64) -> String {
         let _ = write!(
             bar,
             "{}{}{}",
-            color::DIM,
-            glyphs::EMPTY.to_string().repeat(empty),
+            color::FAINT,
+            bars.free.to_string().repeat(empty),
             color::RESET
         );
     }
@@ -690,7 +743,7 @@ pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
     if let Some(ctx_pct) = view.ctx_pct.filter(|_| view.ctx_size > 0) {
         line3_parts.push(format!(
             "{} {}{ctx_pct:.0}%ctx{}",
-            build_ctx_bar(ctx_pct),
+            build_ctx_bar(ctx_pct, ctx.bars),
             ctx_color(ctx_pct),
             color::RESET
         ));
@@ -698,7 +751,7 @@ pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
     // Cache decay belongs with the conversation's state rather than with the
     // rate limits, and line 1 is the one that overflows a narrow terminal.
     if let Some(idle) = view.idle.as_ref() {
-        line3_parts.push(format_idle(idle));
+        line3_parts.push(format_idle(idle, ctx.bars));
     }
     let model_stats =
         format_model_stats(&view.model_shares, view.subagent_count, view.subagent_share);
@@ -719,9 +772,9 @@ pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        Confidence, IdleView, RenderCtx, StatusView, WindowView, build_two_tone_bar, display_width,
-        format_cooldown, format_deadline, format_window, pace_scene, render_status_line,
-        strip_context_note, visible_len,
+        Bars, Confidence, IdleView, RenderCtx, StatusView, WindowView, build_two_tone_bar,
+        display_width, format_cooldown, format_deadline, format_window, pace_scene,
+        render_status_line, strip_context_note, visible_len,
     };
     use crate::units::{Pct, Timestamp};
     use crate::window::WindowKind;
@@ -755,7 +808,7 @@ mod tests {
     fn bar_segments_always_total_the_bar_width() {
         for pct in [0.0, 0.4, 15.0, 99.9, 100.0, 140.0] {
             for projected in [None, Some(0.0), Some(12.0), Some(100.0), Some(310.0)] {
-                let bar = build_two_tone_bar(pct, projected, 75.0, 90.0);
+                let bar = build_two_tone_bar(pct, projected, 75.0, 90.0, Bars::default());
                 assert_eq!(
                     visible_len(&bar),
                     10,
@@ -767,8 +820,8 @@ mod tests {
 
     #[test]
     fn a_nonzero_usage_always_lights_one_cell() {
-        let bar = strip_ansi(&build_two_tone_bar(0.4, None, 75.0, 90.0));
-        assert!(bar.starts_with('▰'), "{bar:?}");
+        let bar = strip_ansi(&build_two_tone_bar(0.4, None, 75.0, 90.0, Bars::default()));
+        assert!(bar.starts_with('▨'), "{bar:?}");
     }
 
     #[test]
@@ -847,7 +900,7 @@ mod tests {
             &RenderCtx::default(),
             10,
         );
-        assert_eq!(strip_ansi(&line), "🗓️ 5d20h/7d ▰▱▱▱▱▱▱▱▱▱  3%");
+        assert_eq!(strip_ansi(&line), "🗓️ 5d20h/7d ▨□□□□□□□□□  3%");
     }
 
     #[test]
@@ -906,8 +959,38 @@ mod tests {
         );
         assert_eq!(
             strip_ansi(&line),
-            "🕛 1h12m/5h ▰▰▰▰▰▰▰▰▰▰ 81% ⇒ 126% 💸45%/h 🔥237% ⌛0.4h"
+            "🕛 1h12m/5h ▨▨▨▨▨▨▨▨▨▨ 81% ⇒ 126% 💸45%/h 🔥237% ⌛0.4h"
         );
+    }
+
+    #[test]
+    fn a_bar_setting_needs_exactly_three_characters() {
+        let bars = Bars::parse("▨▨□").expect("three characters");
+        assert_eq!((bars.filled, bars.projected, bars.free), ('▨', '▨', '□'));
+        assert!(Bars::parse("▨□").is_none());
+        assert!(Bars::parse("▨▨□□").is_none());
+        assert!(Bars::parse("").is_none());
+    }
+
+    #[test]
+    fn the_bars_are_drawn_with_the_configured_characters() {
+        let ctx = RenderCtx {
+            bars: Bars::parse("=+-").expect("three characters"),
+            ..RenderCtx::default()
+        };
+        let line = format_window(
+            WindowKind::FiveHour,
+            &WindowView {
+                pct: Some(Pct::new(22.0)),
+                projected: Some(Pct::new(46.0)),
+                cooldown: "2h07m".to_string(),
+                ..WindowView::default()
+            },
+            &ctx,
+            10,
+        );
+        let plain = strip_ansi(&line);
+        assert!(plain.contains("==+++-----"), "{plain}");
     }
 
     #[test]
@@ -939,7 +1022,7 @@ mod tests {
         );
         assert_eq!(
             strip_ansi(&line),
-            "🕛 2h07m/5h ▰▰▰▰▰▱▱▱▱▱ 22% ⇒  46% 💸45%/h 🚶31%"
+            "🕛 2h07m/5h ▨▨▨▨▨□□□□□ 22% ⇒  46% 💸45%/h 🚶31%"
         );
     }
 
@@ -1011,7 +1094,7 @@ mod tests {
             ttl_inherited: false,
             live: false,
         });
-        assert_eq!(line, "Opus 5      ▰▰▰▰▱▱▱▱▱▱ 42%ctx  💤 ▰▰▰▰▰ 45s/1h");
+        assert_eq!(line, "Opus 5      ▨▨▨▨□□□□□□ 42%ctx  💤 ▨▨▨▨▨ 45s/1h");
     }
 
     #[test]
@@ -1021,14 +1104,14 @@ mod tests {
             cache_ttl: Some(300),
             ..IdleView::default()
         });
-        assert_eq!(drained, "Opus 5      ▰▰▰▰▱▱▱▱▱▱ 42%ctx  💤 ▰▰▱▱▱ 3m/5m");
+        assert_eq!(drained, "Opus 5      ▨▨▨▨□□□□□□ 42%ctx  💤 ▨▨□□□ 3m/5m");
 
         let cold = idle_line(IdleView {
             seconds: Some(5400.0),
             cache_ttl: Some(300),
             ..IdleView::default()
         });
-        assert_eq!(cold, "Opus 5      ▰▰▰▰▱▱▱▱▱▱ 42%ctx  🥶 ▱▱▱▱▱ 1h30m/5m 👋");
+        assert_eq!(cold, "Opus 5      ▨▨▨▨□□□□□□ 42%ctx  🥶 □□□□□ 1h30m/5m 👋");
     }
 
     #[test]
@@ -1039,7 +1122,7 @@ mod tests {
             ttl_inherited: false,
             live: true,
         });
-        assert_eq!(line, "Opus 5      ▰▰▰▰▱▱▱▱▱▱ 42%ctx  💤 ▰▰▰▰▰ 04s/1h •");
+        assert_eq!(line, "Opus 5      ▨▨▨▨□□□□□□ 42%ctx  💤 ▨▨▨▨▨ 04s/1h •");
     }
 
     #[test]
@@ -1050,7 +1133,7 @@ mod tests {
             ttl_inherited: true,
             live: false,
         });
-        assert_eq!(line, "Opus 5      ▰▰▰▰▱▱▱▱▱▱ 42%ctx  💤 ▱▱▱▱▱  --");
+        assert_eq!(line, "Opus 5      ▨▨▨▨□□□□□□ 42%ctx  💤 □□□□□  --");
     }
 
     #[test]
@@ -1084,7 +1167,7 @@ mod tests {
         let plain = strip_ansi(line);
         let offset = plain
             .char_indices()
-            .find(|(_, ch)| *ch == '▰' || *ch == '▱')
+            .find(|(_, ch)| *ch == '▨' || *ch == '□')
             .map(|(index, _)| index)
             .expect("a line with a bar");
         display_width(&plain[..offset])

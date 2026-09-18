@@ -5,6 +5,8 @@ use std::path::PathBuf;
 
 use serde_json::Value;
 
+use crate::render::Bars;
+
 /// When the fourth line is drawn.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FunLine {
@@ -39,6 +41,8 @@ pub struct Config {
     /// Days of raw samples to keep.
     pub retention_days: u32,
     pub debug: bool,
+    /// Characters the bars are drawn with.
+    pub bar_glyphs: Bars,
     /// When to draw the fourth line.
     pub fun_line: FunLine,
     /// Phrases of the reader's own, drawn alongside the computed facts.
@@ -55,6 +59,7 @@ impl Default for Config {
             projects_root: default_projects_root(),
             retention_days: 14,
             debug: false,
+            bar_glyphs: Bars::default(),
             fun_line: FunLine::Start,
             fun_phrases: Vec::new(),
         }
@@ -82,6 +87,9 @@ impl Config {
                 .map(|days| days as u32)
                 .unwrap_or(defaults.retention_days),
             debug: flag(&file, "debug", "CLAUDE_STATUS_DEBUG").unwrap_or(defaults.debug),
+            bar_glyphs: setting(&file, "bar_glyphs", "CLAUDE_STATUS_BARS")
+                .and_then(|raw| Bars::parse(&raw))
+                .unwrap_or(defaults.bar_glyphs),
             fun_line: setting(&file, "fun_line", "CLAUDE_STATUS_FUN")
                 .and_then(|raw| FunLine::parse(&raw))
                 .unwrap_or(defaults.fun_line),

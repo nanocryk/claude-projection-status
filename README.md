@@ -134,12 +134,32 @@ overridden by environment variables.
 | `projects_root` | `CLAUDE_STATUS_PROJECTS` | `~/.claude/projects` | Where Claude Code files transcripts |
 | `retention_days` | `CLAUDE_STATUS_RETENTION` | `14` | Days of raw readings to keep |
 | `debug` | `CLAUDE_STATUS_DEBUG` | `false` | Report storage errors on stderr |
+| `bar_glyphs` | `CLAUDE_STATUS_BARS` | `▨▨□` | Characters for spent, projected and free |
 | `fun_line` | `CLAUDE_STATUS_FUN` | `start` | When to draw the fourth line: `start`, `always` or `never` |
 | `fun_phrases` | | | Phrases of your own for that line |
 | | `CLAUDE_STATUS_CONFIG` | | Read the configuration from this file instead |
 
 The configuration file holds display and location settings only. Nothing about
 the projection is tunable by hand.
+
+### Bar characters
+
+`bar_glyphs` is exactly three characters, in the order spent, projected, free,
+and anything else keeps the default rather than drawing a broken bar. All three
+bars use them: the two windows, the context and the idle indicator. Spent and
+projected are the same character by default, since the colour is what tells
+them apart.
+
+```json
+{ "bar_glyphs": "▨▨□" }
+```
+
+Sets that hold their column in most fonts: `███░` for solid blocks, `▓▓░` for
+a lighter texture at the same size, `══─` for rules centred on the text line,
+`━━┄` for a thinner pair, and `=+-` for pure ASCII. Block Elements and Box
+Drawing are the safest families, since every monospace font draws them one cell
+wide. Geometric Shapes such as `▰▱` are missing from many phone fonts, which
+substitute a proportional glyph and let the segments overlap.
 
 ## The fourth line
 

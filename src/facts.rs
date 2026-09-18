@@ -7,6 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use chrono::{Datelike as _, NaiveDate, TimeZone, Timelike as _};
 
+use crate::glyphs;
 use crate::profile::Profile;
 use crate::slots::{self, HOURS_PER_DAY, SlotId};
 use crate::storage::{Result, SlotCount, Store};
@@ -81,24 +82,44 @@ pub fn collect<Tz: TimeZone>(
     let hours_shape = observed >= HOURS_SHAPE;
     let week_shape = observed >= WEEK_SHAPE;
 
-    let facts = [
-        hours_worked(&week),
-        longest_break(&week, zone),
-        every_hour_of_day(&week, zone),
-        hours_shape.then(|| night_over_afternoon(profile)).flatten(),
-        week_shape.then(|| weekend_like_weekday(profile)).flatten(),
-        session_streak(&sessions, now, zone),
-        full_allowances(&day_windows),
-        hours_shape.then(|| quietest_hour(profile)).flatten(),
-        day_span(&week, now, zone),
-        longest_stretch(&week),
-        hours_shape.then(|| busiest_hour(&counts)).flatten(),
-        busiest_weekday(&month, now, zone),
-        donated(last_week),
-        model_mix(mix),
-        subagents(mix),
-    ];
-    Ok(facts.into_iter().flatten().collect())
+    // Each register is marked, so the kind of remark being made reads before
+    // the remark does.
+    let mut out = Vec::new();
+    let mut add = |mark: &str, facts: Vec<Option<String>>| {
+        out.extend(
+            facts
+                .into_iter()
+                .flatten()
+                .map(|fact| format!("{mark} {fact}")),
+        );
+    };
+    add(
+        glyphs::FACT_GUILT,
+        vec![
+            hours_worked(&week),
+            longest_break(&week, zone),
+            every_hour_of_day(&week, zone),
+            hours_shape.then(|| night_over_afternoon(profile)).flatten(),
+            week_shape.then(|| weekend_like_weekday(profile)).flatten(),
+            session_streak(&sessions, now, zone),
+            full_allowances(&day_windows),
+            hours_shape.then(|| quietest_hour(profile)).flatten(),
+            day_span(&week, now, zone),
+        ],
+    );
+    add(
+        glyphs::FACT_VANITY,
+        vec![
+            longest_stretch(&week),
+            hours_shape.then(|| busiest_hour(&counts)).flatten(),
+            busiest_weekday(&month, now, zone),
+        ],
+    );
+    add(
+        glyphs::FACT_ACCOUNTING,
+        vec![donated(last_week), model_mix(mix), subagents(mix)],
+    );
+    Ok(out)
 }
 
 /// The week, in hours.

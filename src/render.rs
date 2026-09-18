@@ -774,8 +774,10 @@ pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
     let mut out = format!("{line1}\n{line2}\n{line3}");
     // Further back than the rest of the line: nothing here is worth reading
     // before the three above it.
+    // Only the trailing end is trimmed: a leading indent is deliberate, since
+    // a phrase is set where a marked fact's text starts.
     if let Some(fun) = view.fun.as_ref().filter(|text| !text.trim().is_empty()) {
-        let _ = write!(out, "\n{}{}{}", color::DIMMER, fun.trim(), color::RESET);
+        let _ = write!(out, "\n{}{}{}", color::DIMMER, fun.trim_end(), color::RESET);
     }
     out
 }

@@ -19,6 +19,8 @@ use crate::window::{WindowKind, WindowState};
 
 /// How long one fact or phrase holds the fourth line before the next.
 const FUN_BUCKET_SEC: f64 = 300.0;
+/// Columns a register mark and its space take.
+const PHRASE_INDENT: &str = "   ";
 
 /// What one window contributes beyond what the payload already states.
 #[derive(Debug, Default)]
@@ -144,7 +146,16 @@ pub fn fun_line<Tz: TimeZone>(
     }
     let profile = Profile::from_counts(&store.slot_counts()?);
     let facts = facts::collect(store, &profile, &session.mix, now, zone)?;
-    Ok(pick(&facts, phrases, now))
+    let phrases: Vec<String> = phrases.iter().map(|phrase| indented(phrase)).collect();
+    Ok(pick(&facts, &phrases, now))
+}
+
+/// A phrase, set where a fact's text starts.
+///
+/// A fact is introduced by the mark of its register, two columns and a space;
+/// indenting to match keeps the line in one place whichever side it came from.
+fn indented(phrase: &str) -> String {
+    format!("{PHRASE_INDENT}{}", phrase.trim())
 }
 
 /// Alternate between the two pools, falling through to whichever has anything.
@@ -346,6 +357,15 @@ mod tests {
         let opening = pick(&facts, &[], Timestamp::new(0.0));
         let closing = pick(&facts, &[], Timestamp::new(FUN_BUCKET_SEC - 1.0));
         assert_eq!(opening, closing);
+    }
+
+    #[test]
+    fn a_phrase_starts_where_a_marked_fact_does() {
+        assert_eq!(
+            super::indented("Reticulating splines"),
+            "   Reticulating splines"
+        );
+        assert_eq!(super::indented("  padded already  "), "   padded already");
     }
 
     #[test]

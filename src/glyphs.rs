@@ -46,6 +46,12 @@ pub const WAVE: char = '👋';
 /// Something was written to the transcript moments ago.
 pub const LIVE: char = '•';
 
+/// Registers the fourth line's observations fall into: what the week says
+/// about you, what it says in your favour, and where the tokens went.
+pub const FACT_GUILT: &str = "👀";
+pub const FACT_VANITY: &str = "😎";
+pub const FACT_ACCOUNTING: &str = "🧾";
+
 /// Stand-in for a model family, by the letter the transcript reader gives it.
 ///
 /// A family with no glyph of its own keeps its name and its letter.

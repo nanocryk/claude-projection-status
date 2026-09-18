@@ -179,7 +179,10 @@ costs a terminal row exactly while there is nothing else to look at.
 The facts are computed from the hour-by-hour verdicts, the activity profile,
 the sessions table, finished windows and the model mix of the session in front
 of you. One with nothing to say stays quiet, so a young database offers fewer
-of them. `notes/fun-line.md` describes the whole arrangement.
+of them. Each carries the mark of its register, `👀` for what the week says
+about you, `😎` for what it says in your favour and `🧾` for where the tokens
+went, and your own phrases are indented to match. `notes/fun-line.md` describes
+the whole arrangement.
 
 ## Storage
 

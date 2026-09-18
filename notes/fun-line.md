@@ -33,7 +33,11 @@ verdicts, the activity profile, the sessions table, finished windows, and the
 model mix of the session in front of you. None of them is actionable, and that
 is the point.
 
-They fall in three registers: guilt (how much of the week has gone into this),
-vanity (records worth a small nod), and accounting (where the tokens went). A
-fact that has nothing to say stays quiet, so a young database simply shows
-fewer of them.
+They fall in three registers, each with a mark of its own: guilt (how much of
+the week has gone into this), vanity (records worth a small nod), and
+accounting (where the tokens went). A fact that has nothing to say stays quiet,
+so a young database simply shows fewer of them.
+
+A phrase carries no mark, since it is not an observation about anything, and is
+indented to where a marked fact's text begins so the line holds one shape
+whichever side it came from.

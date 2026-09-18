@@ -1,5 +1,5 @@
-//! Settings, read from `~/.config/claude-projection-status/config.json` and
-//! overridden by environment variables.
+//! Settings, read from `config.json` in each platform's own configuration
+//! directory and overridden by environment variables.
 
 use std::path::PathBuf;
 
@@ -66,28 +66,34 @@ impl Config {
     }
 }
 
-pub fn home_dir() -> Option<PathBuf> {
-    let key = if cfg!(windows) { "USERPROFILE" } else { "HOME" };
-    std::env::var_os(key).map(PathBuf::from)
+/// Directory name used under each platform's own cache and config roots.
+const APP_DIR: &str = "claude-projection-status";
+
+fn home_dir() -> PathBuf {
+    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// `%LOCALAPPDATA%` on Windows, `~/Library/Caches` on macOS, and
+/// `$XDG_CACHE_HOME` or `~/.cache` elsewhere.
 fn default_cache_dir() -> PathBuf {
-    let base = home_dir().unwrap_or_else(|| PathBuf::from("."));
-    base.join(".cache").join("claude-projection-status")
+    dirs::cache_dir().unwrap_or_else(home_dir).join(APP_DIR)
 }
 
+/// Claude Code's own layout, not ours, so this one stays under the home
+/// directory on every platform.
 fn default_projects_root() -> PathBuf {
-    let base = home_dir().unwrap_or_else(|| PathBuf::from("."));
-    base.join(".claude").join("projects")
+    home_dir().join(".claude").join("projects")
 }
 
+/// `%APPDATA%` on Windows, `~/Library/Application Support` on macOS, and
+/// `$XDG_CONFIG_HOME` or `~/.config` elsewhere.
 fn config_path() -> PathBuf {
     if let Some(explicit) = std::env::var_os("CLAUDE_STATUS_CONFIG") {
         return PathBuf::from(explicit);
     }
-    let base = home_dir().unwrap_or_else(|| PathBuf::from("."));
-    base.join(".config")
-        .join("claude-projection-status")
+    dirs::config_dir()
+        .unwrap_or_else(home_dir)
+        .join(APP_DIR)
         .join("config.json")
 }
 
@@ -130,10 +136,7 @@ pub fn bypass_enabled() -> bool {
     if from_env {
         return true;
     }
-    let Some(home) = home_dir() else {
-        return false;
-    };
-    let settings = std::fs::read_to_string(home.join(".claude").join("settings.json")).ok();
+    let settings = std::fs::read_to_string(home_dir().join(".claude").join("settings.json")).ok();
     settings
         .and_then(|raw| serde_json::from_str::<Value>(&raw).ok())
         .and_then(|value| value.get("defaultMode")?.as_str().map(str::to_owned))

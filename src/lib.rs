@@ -6,5 +6,7 @@ pub mod config;
 pub mod glyphs;
 pub mod input;
 pub mod render;
+pub mod slots;
+pub mod storage;
 pub mod units;
 pub mod window;

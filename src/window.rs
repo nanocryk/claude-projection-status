@@ -12,6 +12,13 @@ pub enum WindowKind {
 impl WindowKind {
     pub const ALL: [WindowKind; 2] = [WindowKind::FiveHour, WindowKind::SevenDay];
 
+    /// The window a label names, as used by `check-threshold`.
+    pub fn from_label(label: &str) -> Option<Self> {
+        WindowKind::ALL
+            .into_iter()
+            .find(|kind| kind.label().eq_ignore_ascii_case(label))
+    }
+
     /// Label as it appears in the status line and in stored rows.
     pub fn label(self) -> &'static str {
         match self {

@@ -9,7 +9,7 @@ use crate::facts;
 use crate::history;
 use crate::input::Payload;
 use crate::profile::Profile;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::render::{self, IdleView, StatusView, WindowView};
 use crate::storage::{self, Store};
@@ -135,6 +135,7 @@ pub fn fun_line<Tz: TimeZone>(
     store: &Store,
     show: FunLine,
     phrases: &[String],
+    payload: &Payload,
     session: &SessionReport,
     now: Timestamp,
     zone: &Tz,
@@ -144,8 +145,13 @@ pub fn fun_line<Tz: TimeZone>(
         FunLine::Start if !session.at_session_start => return Ok(None),
         _ => {}
     }
+    let moment = facts::Moment {
+        cwd: Some(PathBuf::from(payload.cwd())).filter(|dir| dir.is_dir()),
+        five_hour: payload.window(WindowKind::FiveHour),
+        session_started: store.session_started(payload.session_id())?,
+    };
     let profile = Profile::from_counts(&store.slot_counts()?);
-    let facts = facts::collect(store, &profile, &session.mix, now, zone)?;
+    let facts = facts::collect(store, &profile, &session.mix, &moment, now, zone)?;
     let phrases: Vec<String> = phrases.iter().map(|phrase| indented(phrase)).collect();
     Ok(pick(&facts, &phrases, now))
 }

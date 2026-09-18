@@ -3,7 +3,7 @@
 use std::io::Read as _;
 use std::process::ExitCode;
 
-use chrono::{DateTime, Local, TimeZone, Timelike as _};
+use chrono::{DateTime, Datelike as _, Local, TimeZone, Timelike as _};
 
 use claude_status::app::{self, Analysis, SessionReport};
 use claude_status::config::{self, Config};
@@ -51,8 +51,12 @@ fn print_status_line() {
         config::bypass_enabled(),
         fun,
     );
+    let today = Local::now();
     let ctx = RenderCtx {
-        local_hour: Local::now().hour(),
+        local_hour: today.hour(),
+        local_month: today.month(),
+        local_day: today.day(),
+        local_weekday: today.weekday().num_days_from_monday() as u8,
         warning_pct: config.warning_pct,
         critical_pct: config.critical_pct,
         bars: config.bar_glyphs,
@@ -76,6 +80,7 @@ fn analyse(
         &store,
         config.fun_line,
         &config.fun_phrases,
+        payload,
         &session,
         now,
         &Local,

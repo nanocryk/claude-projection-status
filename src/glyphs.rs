@@ -18,7 +18,24 @@ pub const EMPTY: char = '□';
 
 /// Spiral calendar pad plus VS16, which forces the emoji presentation.
 pub const CALENDAR: &str = "🗓️";
-pub const PROJ_ARROW: char = '⇒';
+const BEACH: &str = "🏖️";
+const PUMPKIN: &str = "🎃";
+const TREE: &str = "🎄";
+
+/// What the week's window wears today.
+///
+/// The calendar knows the date, so it may as well say something about it: a
+/// beach at the weekend, and a couple of days a year that speak for
+/// themselves. `weekday` counts from Monday.
+pub fn calendar_glyph(month: u32, day: u32, weekday: u8) -> &'static str {
+    match (month, day) {
+        (10, 31) => PUMPKIN,
+        (12, 19..=25) => TREE,
+        _ if weekday >= 5 => BEACH,
+        _ => CALENDAR,
+    }
+}
+pub const PROJ_ARROW: char = '➜';
 pub const DEADLINE: char = '⏰';
 /// Work the remaining budget buys, as opposed to a moment on the clock.
 pub const WORK_LEFT: char = '⌛';
@@ -78,7 +95,18 @@ pub fn clock_glyph(hour: u32) -> char {
 
 #[cfg(test)]
 mod tests {
-    use super::clock_glyph;
+    use super::{CALENDAR, calendar_glyph, clock_glyph};
+
+    #[test]
+    fn the_calendar_dresses_for_the_occasion() {
+        // A Wednesday in March, a Saturday, and the two days of the year.
+        assert_eq!(calendar_glyph(3, 11, 2), CALENDAR);
+        assert_eq!(calendar_glyph(3, 14, 5), "🏖️");
+        assert_eq!(calendar_glyph(10, 31, 2), "🎃");
+        assert_eq!(calendar_glyph(12, 24, 3), "🎄");
+        // The season outranks the weekend.
+        assert_eq!(calendar_glyph(12, 20, 6), "🎄");
+    }
 
     #[test]
     fn clock_glyph_wraps_like_a_dial() {

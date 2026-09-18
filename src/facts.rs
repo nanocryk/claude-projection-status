@@ -4,6 +4,7 @@
 //! database simply offers fewer of them.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::path::{Path, PathBuf};
 
 use chrono::{Datelike as _, NaiveDate, TimeZone, Timelike as _};
 
@@ -13,7 +14,7 @@ use crate::slots::{self, HOURS_PER_DAY, SlotId};
 use crate::storage::{Result, SlotCount, Store};
 use crate::transcript::{FAMILY_ORDER, Mix};
 use crate::units::{Pct, Timestamp};
-use crate::window::WindowKind;
+use crate::window::{WindowKind, WindowState};
 
 const DAY_SEC: f64 = 86400.0;
 const WEEK_SEC: f64 = 7.0 * DAY_SEC;
@@ -22,6 +23,9 @@ const MONTH_SEC: f64 = 28.0 * DAY_SEC;
 /// Share of an hour that must have been worked for it to count as an hour of
 /// work here. The estimator deals in fractions; a sentence does not.
 const WORKED: f64 = 0.5;
+
+/// How new a window is while it still counts as fresh.
+const FRESH_WINDOW_SEC: f64 = 600.0;
 
 /// Observed slot occurrences a claim about the shape of the day needs behind
 /// it. A cold profile is flat, and a flat profile makes every comparison of
@@ -38,11 +42,23 @@ struct Hour {
     worked: bool,
 }
 
+/// What is true right now, as opposed to what the history holds.
+#[derive(Debug, Default, Clone)]
+pub struct Moment {
+    /// Where the session is running, for the repository underneath it.
+    pub cwd: Option<PathBuf>,
+    /// The 5h window as the payload reports it.
+    pub five_hour: Option<WindowState>,
+    /// First reading this session reported.
+    pub session_started: Option<Timestamp>,
+}
+
 /// Every fact that has something to say, in no particular order.
 pub fn collect<Tz: TimeZone>(
     store: &Store,
     profile: &Profile,
     mix: &Mix,
+    moment: &Moment,
     now: Timestamp,
     zone: &Tz,
 ) -> Result<Vec<String>> {
@@ -105,6 +121,10 @@ pub fn collect<Tz: TimeZone>(
             full_allowances(&day_windows),
             hours_shape.then(|| quietest_hour(profile)).flatten(),
             day_span(&week, now, zone),
+            fresh_window(moment, now),
+            small_hours(now, zone),
+            long_session(moment, now),
+            since_last_commit(moment, now),
         ],
     );
     add(
@@ -236,6 +256,62 @@ fn day_span<Tz: TimeZone>(week: &[Hour], now: Timestamp, zone: &Tz) -> Option<St
         .then(|| format!("First active hour today: {first_hour:02}:00. It is now {current:02}:00."))
 }
 
+/// A window that has only just opened.
+fn fresh_window(moment: &Moment, now: Timestamp) -> Option<String> {
+    let window = moment.five_hour?;
+    let opened = WindowKind::FiveHour.started_at(window.resets_at);
+    let age = now.seconds_since(opened);
+    (0.0..FRESH_WINDOW_SEC)
+        .contains(&age)
+        .then(|| "A fresh five hours. Try to make it last.".to_string())
+}
+
+/// The hour it is, when the hour is indefensible.
+fn small_hours<Tz: TimeZone>(now: Timestamp, zone: &Tz) -> Option<String> {
+    let hour = slots::local(now, zone).hour();
+    (1..=4)
+        .contains(&hour)
+        .then(|| format!("It is {hour:02}:00. This is not a normal hour to be working."))
+}
+
+/// How long this conversation has been going on.
+fn long_session(moment: &Moment, now: Timestamp) -> Option<String> {
+    let hours = now.seconds_since(moment.session_started?) / 3600.0;
+    (hours >= 4.0).then(|| format!("You have been in this conversation for {hours:.0} hours."))
+}
+
+/// How long since any of this was written down.
+fn since_last_commit(moment: &Moment, now: Timestamp) -> Option<String> {
+    let at = last_commit_at(moment.cwd.as_deref())?;
+    let hours = now.seconds_since(at) / 3600.0;
+    if hours < 4.0 {
+        return None;
+    }
+    if hours >= 48.0 {
+        return Some(format!("Nothing committed in {:.0} days.", hours / 24.0));
+    }
+    Some(format!("Nothing committed in {hours:.0} hours."))
+}
+
+/// When the repository above this directory last moved.
+///
+/// The reflog is what every commit appends to, so its age is the closest
+/// thing to a commit time that costs one stat call.
+fn last_commit_at(cwd: Option<&Path>) -> Option<Timestamp> {
+    let repo = cwd?
+        .ancestors()
+        .find(|dir| dir.join(".git").is_dir())?
+        .join(".git");
+    let modified = std::fs::metadata(repo.join("logs").join("HEAD"))
+        .or_else(|_| std::fs::metadata(repo.join("HEAD")))
+        .ok()?
+        .modified()
+        .ok()?
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?;
+    Some(Timestamp::new(modified.as_secs_f64()))
+}
+
 /// The longest stretch without stopping.
 fn longest_stretch(week: &[Hour]) -> Option<String> {
     let (length, _) = longest_run(week, true)?;
@@ -362,13 +438,15 @@ fn family_name(family: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        Hour, day_span, every_hour_of_day, hours_worked, longest_break, longest_stretch,
-        session_streak, weekend_like_weekday,
+        Hour, Moment, day_span, every_hour_of_day, fresh_window, hours_worked, long_session,
+        longest_break, longest_stretch, session_streak, since_last_commit, small_hours,
+        weekend_like_weekday,
     };
     use crate::profile::Profile;
     use crate::slots::SlotId;
     use crate::storage::SlotCount;
-    use crate::units::Timestamp;
+    use crate::units::{Pct, Timestamp};
+    use crate::window::WindowState;
     use chrono::FixedOffset;
     use std::collections::BTreeMap;
 
@@ -466,6 +544,80 @@ mod tests {
             Some("You have started a session every day for 3 days.")
         );
         assert_eq!(session_streak(&days[..2], now, &utc()), None);
+    }
+
+    #[test]
+    fn the_small_hours_speak_for_themselves() {
+        let three = Timestamp::new(MONDAY_MIDNIGHT + 3.0 * 3600.0);
+        assert_eq!(
+            small_hours(three, &utc()).as_deref(),
+            Some("It is 03:00. This is not a normal hour to be working.")
+        );
+        let noon = Timestamp::new(MONDAY_MIDNIGHT + 12.0 * 3600.0);
+        assert_eq!(small_hours(noon, &utc()), None);
+    }
+
+    #[test]
+    fn a_window_stays_fresh_for_ten_minutes() {
+        let opened = MONDAY_MIDNIGHT + 9.0 * 3600.0;
+        let moment = Moment {
+            five_hour: Some(WindowState {
+                used: Pct::new(0.0),
+                resets_at: Timestamp::new(opened + 5.0 * 3600.0),
+            }),
+            ..Moment::default()
+        };
+        assert!(fresh_window(&moment, Timestamp::new(opened + 60.0)).is_some());
+        assert_eq!(fresh_window(&moment, Timestamp::new(opened + 3600.0)), None);
+    }
+
+    #[test]
+    fn a_long_conversation_is_noticed_after_four_hours() {
+        let moment = Moment {
+            session_started: Some(Timestamp::new(MONDAY_MIDNIGHT)),
+            ..Moment::default()
+        };
+        assert_eq!(
+            long_session(&moment, Timestamp::new(MONDAY_MIDNIGHT + 3.0 * 3600.0)),
+            None
+        );
+        assert_eq!(
+            long_session(&moment, Timestamp::new(MONDAY_MIDNIGHT + 6.0 * 3600.0)).as_deref(),
+            Some("You have been in this conversation for 6 hours.")
+        );
+    }
+
+    #[test]
+    fn a_repository_that_just_moved_is_left_alone() {
+        let repo = tempfile::tempdir().expect("a directory");
+        let logs = repo.path().join(".git").join("logs");
+        std::fs::create_dir_all(&logs).expect("a reflog directory");
+        std::fs::write(logs.join("HEAD"), "").expect("a reflog");
+        let moment = Moment {
+            cwd: Some(repo.path().to_path_buf()),
+            ..Moment::default()
+        };
+        // Written this instant, so there is nothing to nag about yet.
+        let now = Timestamp::new(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("a clock")
+                .as_secs_f64(),
+        );
+        assert_eq!(since_last_commit(&moment, now), None);
+    }
+
+    #[test]
+    fn a_directory_outside_a_repository_reports_nothing() {
+        let plain = tempfile::tempdir().expect("a directory");
+        let moment = Moment {
+            cwd: Some(plain.path().to_path_buf()),
+            ..Moment::default()
+        };
+        assert_eq!(
+            since_last_commit(&moment, Timestamp::new(MONDAY_MIDNIGHT)),
+            None
+        );
     }
 
     #[test]

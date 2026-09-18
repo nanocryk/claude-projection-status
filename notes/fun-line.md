@@ -28,10 +28,12 @@ random would never sit still long enough to finish reading.
 
 ## The facts
 
-Every one is computed from what the database already holds: the hour-by-hour
+Most are computed from what the database already holds: the hour-by-hour
 verdicts, the activity profile, the sessions table, finished windows, and the
-model mix of the session in front of you. None of them is actionable, and that
-is the point.
+model mix of the session in front of you. A few describe the moment instead of
+the history: how new the window is, how long the conversation has run, what
+hour it is, and how long the repository underneath the session has gone without
+a commit. None of them is actionable, and that is the point.
 
 They fall in three registers, each with a mark of its own: guilt (how much of
 the week has gone into this), vanity (records worth a small nod), and

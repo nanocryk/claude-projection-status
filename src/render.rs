@@ -19,7 +19,7 @@ use crate::units::{Pct, Timestamp};
 use crate::window::WindowKind;
 
 const BAR_WIDTH: usize = 10;
-/// Visible width of the `⇒ NNN%` column. Held as blanks when a window has no
+/// Visible width of the `➜ NNN%` column. Held as blanks when a window has no
 /// projection, so the segments after it stay aligned with the other window.
 const PROJ_COLUMN_WIDTH: usize = 6;
 const IDLE_BAR_WIDTH: usize = 5;
@@ -136,6 +136,10 @@ impl Bars {
 #[serde(default)]
 pub struct RenderCtx {
     pub local_hour: u32,
+    /// Local month and day of the month, and the weekday counting from Monday.
+    pub local_month: u32,
+    pub local_day: u32,
+    pub local_weekday: u8,
     pub warning_pct: f64,
     pub critical_pct: f64,
     pub bars: Bars,
@@ -145,10 +149,19 @@ impl Default for RenderCtx {
     fn default() -> Self {
         Self {
             local_hour: 0,
+            local_month: 1,
+            local_day: 1,
+            local_weekday: 0,
             warning_pct: 40.0,
             critical_pct: 70.0,
             bars: Bars::default(),
         }
+    }
+}
+
+impl RenderCtx {
+    fn calendar(&self) -> &'static str {
+        glyphs::calendar_glyph(self.local_month, self.local_day, self.local_weekday)
     }
 }
 
@@ -381,7 +394,7 @@ fn format_window(
 
     let glyph = match kind {
         WindowKind::FiveHour => glyphs::clock_glyph(ctx.local_hour).to_string(),
-        WindowKind::SevenDay => glyphs::CALENDAR.to_string(),
+        WindowKind::SevenDay => ctx.calendar().to_string(),
     };
     let mut prefix = format!(
         "{}{glyph} {}/{}{}",
@@ -729,7 +742,7 @@ pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
     // most. A long model name therefore moves every bar together rather than
     // stepping its own out of line.
     let prefix_5h = format!("🕒 {}/5h", view.five_hour.cooldown);
-    let prefix_7d = format!("{} {}/7d", glyphs::CALENDAR, view.seven_day.cooldown);
+    let prefix_7d = format!("{} {}/7d", ctx.calendar(), view.seven_day.cooldown);
     let prefix_width = display_width(&prefix_5h)
         .max(display_width(&prefix_7d))
         .max(display_width(&head));
@@ -972,7 +985,7 @@ mod tests {
         );
         assert_eq!(
             strip_ansi(&line),
-            "🕛 1h12m/5h ▨▨▨▨▨▨▨▨▨▨ 81% ⇒ 126% 💸45%/h 🔥237% ⌛0.4h"
+            "🕛 1h12m/5h ▨▨▨▨▨▨▨▨▨▨ 81% ➜ 126% 💸45%/h 🔥237% ⌛0.4h"
         );
     }
 
@@ -1035,7 +1048,7 @@ mod tests {
         );
         assert_eq!(
             strip_ansi(&line),
-            "🕛 2h07m/5h ▨▨▨▨▨□□□□□ 22% ⇒  46% 💸45%/h 🚶31%"
+            "🕛 2h07m/5h ▨▨▨▨▨□□□□□ 22% ➜  46% 💸45%/h 🚶31%"
         );
     }
 

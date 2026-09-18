@@ -390,6 +390,19 @@ impl Store {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// First reading this session ever reported.
+    ///
+    /// The sessions table stamps when a session was last seen; the readings
+    /// are what remember when it started.
+    pub fn session_started(&self, session: &str) -> Result<Option<Timestamp>> {
+        let earliest: Option<f64> = self.conn.query_row(
+            "SELECT MIN(at) FROM samples WHERE session = ?1",
+            params![session],
+            |row| row.get(0),
+        )?;
+        Ok(earliest.map(Timestamp::new))
+    }
+
     /// When each session was first seen, oldest first.
     pub fn sessions_seen_since(&self, from: Timestamp) -> Result<Vec<Timestamp>> {
         let mut statement = self

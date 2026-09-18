@@ -6,9 +6,9 @@ projections learned from your own working pattern, and the state of the prompt
 cache.
 
 ```
-🕔 2h29m/5h ▰▰▰▰▰▰▰▱▱▱ 22% ⇒  72% 💸80%/h 🏃64%
-🗓️ 4d23h/7d ▰▰▰▰▰▰▰▰▰▰ 31% ⇒ 102% 💸14%/d 🎯103% ⏰Mon 18h
-Opus 5      ▰▰▰▰▰▰▱▱▱▱ 55%ctx  💤 ▰▰▰▰▰ 16s/1h •
+🕔 2h29m/5h ▨▨▨▨▨▨▨□□□ 22% ➜  72% 💸80%/h 🏃64%
+🗓️ 4d23h/7d ▨▨▨▨▨▨▨▨▨▨ 31% ➜ 102% 💸14%/d 🎯103% ⏰Mon 18h
+🐶 Opus 5   ▨▨▨▨▨▨□□□□ 55%ctx  💤 ▨▨▨▨▨ 16s/1h •
 ```
 
 Line 1 is the 5h rate-limit window, line 2 the 7d one, line 3 the conversation:
@@ -72,15 +72,15 @@ date is what a plan hangs on. Each line carries one of the two, never both.
 | Element | Example | Meaning |
 |---|---|---|
 | Window prefix | `🕔 2h29m/5h` | Time until the window resets. The clock face follows the hour |
-| Bar | `▰▰▰▰▰▰▰▱▱▱` | Solid is spent, shaded is projected on top, dim is free |
+| Bar | `▨▨▨▨▨▨▨□□□` | Solid is spent, shaded is projected on top, dim is free |
 | Usage | `22%` | Spent now. Yellow past `warning_pct`, red past `critical_pct` |
-| Projection | `⇒ 72%` | Expected at reset. Bold when well supported, faint when barely |
+| Projection | `➜ 72%` | Expected at reset. Bold when well supported, faint when barely |
 | Rate | `💸80%/h`, `💸14%/d` | Percent of the budget per working hour, and per day |
 | Pace | `🏃64%` | The rate over the fastest the remaining budget affords. 100% lands exactly on the limit at reset |
 | Work left | `⌛0.4h` | 5h line: hours of work the budget still buys. Idle time does not consume it. Absent below 100% pace |
 | Deadline | `⏰Mon 18h` | 7d line: when the limit lands, on the local clock. Absent below 100% pace |
 | Context | `55%ctx` | How full the conversation's context window is |
-| Idle | `💤 ▰▰▰▰▰ 16s/1h` | Time since the last API call, against the cache lifetime |
+| Idle | `💤 ▨▨▨▨▨ 16s/1h` | Time since the last API call, against the cache lifetime |
 | Live | `•` | Something was written to the transcript moments ago |
 | Cold | `🥶` | The prompt cache has passed its lifetime |
 | Nudge | `👋` | Idle for over half an hour |

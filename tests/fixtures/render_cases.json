@@ -1,0 +1,631 @@
+[
+  {
+    "name": "nominal",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 15.0,
+        "projected": 23.0,
+        "cooldown": "4h32m",
+        "samples": [
+          {
+            "at": 1757985600.0,
+            "pct": 2.0
+          },
+          {
+            "at": 1757987200.0,
+            "pct": 3.4
+          },
+          {
+            "at": 1757988800.0,
+            "pct": 4.8
+          },
+          {
+            "at": 1757990400.0,
+            "pct": 6.199999999999999
+          },
+          {
+            "at": 1757992000.0,
+            "pct": 7.6
+          },
+          {
+            "at": 1757993600.0,
+            "pct": 9.0
+          },
+          {
+            "at": 1757995200.0,
+            "pct": 10.399999999999999
+          },
+          {
+            "at": 1757996800.0,
+            "pct": 11.799999999999999
+          },
+          {
+            "at": 1757998400.0,
+            "pct": 13.2
+          },
+          {
+            "at": 1758000000.0,
+            "pct": 14.6
+          }
+        ],
+        "confidence": "medium",
+        "rate": 8.0
+      },
+      "seven_day": {
+        "pct": 2.0,
+        "projected": 8.0,
+        "cooldown": "6d02h",
+        "samples": [
+          {
+            "at": 1757928000.0,
+            "pct": 1.0
+          },
+          {
+            "at": 1757937000.0,
+            "pct": 1.25
+          },
+          {
+            "at": 1757946000.0,
+            "pct": 1.5
+          },
+          {
+            "at": 1757955000.0,
+            "pct": 1.75
+          },
+          {
+            "at": 1757964000.0,
+            "pct": 2.0
+          },
+          {
+            "at": 1757973000.0,
+            "pct": 2.25
+          },
+          {
+            "at": 1757982000.0,
+            "pct": 2.5
+          },
+          {
+            "at": 1757991000.0,
+            "pct": 2.75
+          }
+        ],
+        "confidence": "low",
+        "rate": 4.0
+      },
+      "model": "Opus 5 (1M context)",
+      "ctx_pct": 42.0,
+      "ctx_size": 1000000
+    },
+    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m 23%\u001b[0m \u001b[38;5;238m▁\u001b[0m\u001b[38;5;252m▁\u001b[0m\u001b[33m▄\u001b[0m\u001b[31m▇\u001b[0m\u001b[33m▄\u001b[0m\u001b[31m▇\u001b[0m\u001b[33m▄\u001b[0m\u001b[31m▇\u001b[0m \u001b[38;5;78m8%/h\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[2m\u001b[38;5;78m  8%\u001b[0m \u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[33m▄\u001b[0m\u001b[33m▄\u001b[0m\u001b[33m▄\u001b[0m\u001b[33m▄\u001b[0m\u001b[33m▄\u001b[0m\u001b[31m▇\u001b[0m \u001b[38;5;78m4%/d\u001b[0m\n\u001b[38;5;249mOpus 5\u001b[0m      \u001b[38;5;78m▰▰▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱\u001b[0m \u001b[38;5;78m42%ctx\u001b[0m"
+  },
+  {
+    "name": "no-data",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "cooldown": "   --"
+      },
+      "seven_day": {
+        "cooldown": "   --"
+      },
+      "model": "Unknown"
+    },
+    "expected": "\u001b[38;5;249m[--] 5h: --%\u001b[0m\n\u001b[38;5;249m[--] 7d: --%\u001b[0m\n\u001b[38;5;249mUnknown\u001b[0m     "
+  },
+  {
+    "name": "projection-eta",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 3.0,
+        "cooldown": "4h58m",
+        "proj_eta": "7m"
+      },
+      "seven_day": {
+        "pct": 1.0,
+        "cooldown": "6d23h"
+      },
+      "model": "Sonnet 5",
+      "ctx_pct": 12.0,
+      "ctx_size": 200000
+    },
+    "expected": "\u001b[38;5;249m🕑 4h58m/5h\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  3%\u001b[0m \u001b[38;5;249m⇒   7m\u001b[0m\n\u001b[38;5;249m🗓️ 6d23h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  1%\u001b[0m       \n\u001b[38;5;249mSonnet 5\u001b[0m    \u001b[38;5;78m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m \u001b[38;5;78m12%ctx\u001b[0m"
+  },
+  {
+    "name": "deadline",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 62.0,
+        "projected": 96.0,
+        "cooldown": "2h04m",
+        "time_to_100": "2h30m",
+        "confidence": "high",
+        "rate": 22.0,
+        "samples": [
+          {
+            "at": 1757985600.0,
+            "pct": 2.0
+          },
+          {
+            "at": 1757987200.0,
+            "pct": 3.4
+          },
+          {
+            "at": 1757988800.0,
+            "pct": 4.8
+          },
+          {
+            "at": 1757990400.0,
+            "pct": 6.199999999999999
+          },
+          {
+            "at": 1757992000.0,
+            "pct": 7.6
+          },
+          {
+            "at": 1757993600.0,
+            "pct": 9.0
+          },
+          {
+            "at": 1757995200.0,
+            "pct": 10.399999999999999
+          },
+          {
+            "at": 1757996800.0,
+            "pct": 11.799999999999999
+          },
+          {
+            "at": 1757998400.0,
+            "pct": 13.2
+          },
+          {
+            "at": 1758000000.0,
+            "pct": 14.6
+          }
+        ]
+      },
+      "seven_day": {
+        "pct": 74.0,
+        "projected": 91.0,
+        "cooldown": "1d06h",
+        "time_to_100": "1d04h",
+        "confidence": "high",
+        "rate": 12.0,
+        "samples": [
+          {
+            "at": 1757928000.0,
+            "pct": 1.0
+          },
+          {
+            "at": 1757937000.0,
+            "pct": 1.25
+          },
+          {
+            "at": 1757946000.0,
+            "pct": 1.5
+          },
+          {
+            "at": 1757955000.0,
+            "pct": 1.75
+          },
+          {
+            "at": 1757964000.0,
+            "pct": 2.0
+          },
+          {
+            "at": 1757973000.0,
+            "pct": 2.25
+          },
+          {
+            "at": 1757982000.0,
+            "pct": 2.5
+          },
+          {
+            "at": 1757991000.0,
+            "pct": 2.75
+          }
+        ]
+      },
+      "model": "Opus 5",
+      "ctx_pct": 66.0,
+      "ctx_size": 1000000
+    },
+    "expected": "\u001b[38;5;249m🕑 2h04m/5h\u001b[0m \u001b[97m▰▰▰▰▰▰\u001b[0m\u001b[31m▰▰▰▰\u001b[0m\u001b[33m 62%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[1m\u001b[31m 96%\u001b[0m \u001b[38;5;238m▁\u001b[0m\u001b[38;5;252m▁\u001b[0m\u001b[33m▄\u001b[0m\u001b[31m▇\u001b[0m\u001b[33m▄\u001b[0m\u001b[31m▇\u001b[0m\u001b[33m▄\u001b[0m\u001b[31m▇\u001b[0m \u001b[33m22%/h\u001b[0m \u001b[1m\u001b[31m⏰ 2h30m\u001b[0m\n\u001b[38;5;249m🗓️ 1d06h/7d\u001b[0m \u001b[97m▰▰▰▰▰▰▰\u001b[0m\u001b[33m▰▰\u001b[0m\u001b[38;5;249m▱\u001b[0m\u001b[31m 74%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[1m\u001b[33m 91%\u001b[0m \u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[33m▄\u001b[0m\u001b[33m▄\u001b[0m\u001b[33m▄\u001b[0m\u001b[33m▄\u001b[0m\u001b[33m▄\u001b[0m\u001b[31m▇\u001b[0m \u001b[33m12%/d\u001b[0m \u001b[1m\u001b[31m⏰ 1d04h\u001b[0m\n\u001b[38;5;249mOpus 5\u001b[0m      \u001b[33m▰▰▰▰▰▰▰\u001b[0m\u001b[38;5;249m▱▱▱\u001b[0m \u001b[33m66%ctx\u001b[0m"
+  },
+  {
+    "name": "idle-fresh-1h-ttl",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 15.0,
+        "projected": 23.0,
+        "cooldown": "4h32m"
+      },
+      "seven_day": {
+        "pct": 2.0,
+        "projected": 8.0,
+        "cooldown": "6d02h"
+      },
+      "model": "Opus 5",
+      "idle_sec": 45.0,
+      "cache_ttl": 3600
+    },
+    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m 23%\u001b[0m 💤 \u001b[38;5;249m▰▰▰▰▰\u001b[0m \u001b[38;5;249m45s/1h\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m  8%\u001b[0m\n\u001b[38;5;249mOpus 5\u001b[0m      "
+  },
+  {
+    "name": "idle-yellow",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 15.0,
+        "cooldown": "4h32m"
+      },
+      "seven_day": {
+        "pct": 2.0,
+        "cooldown": "6d02h"
+      },
+      "model": "Opus 5",
+      "idle_sec": 200.0,
+      "cache_ttl": 300
+    },
+    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m        💤 \u001b[33m▰▰\u001b[0m\u001b[38;5;249m▱▱▱\u001b[0m \u001b[33m3m/5m\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m       \n\u001b[38;5;249mOpus 5\u001b[0m      "
+  },
+  {
+    "name": "idle-red",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 15.0,
+        "cooldown": "4h32m"
+      },
+      "seven_day": {
+        "pct": 2.0,
+        "cooldown": "6d02h"
+      },
+      "model": "Opus 5",
+      "idle_sec": 260.0,
+      "cache_ttl": 300
+    },
+    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m        💤 \u001b[31m▰\u001b[0m\u001b[38;5;249m▱▱▱▱\u001b[0m \u001b[31m4m/5m\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m       \n\u001b[38;5;249mOpus 5\u001b[0m      "
+  },
+  {
+    "name": "idle-cold-with-nudge",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 15.0,
+        "cooldown": "4h32m"
+      },
+      "seven_day": {
+        "pct": 2.0,
+        "cooldown": "6d02h"
+      },
+      "model": "Opus 5",
+      "idle_sec": 5400.0,
+      "cache_ttl": 300
+    },
+    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m        🥶 \u001b[38;5;249m▱▱▱▱▱\u001b[0m \u001b[1m\u001b[38;5;45m1h30m/5m\u001b[0m 👋\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m       \n\u001b[38;5;249mOpus 5\u001b[0m      "
+  },
+  {
+    "name": "idle-unknown-ttl",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 15.0,
+        "cooldown": "4h32m"
+      },
+      "seven_day": {
+        "pct": 2.0,
+        "cooldown": "6d02h"
+      },
+      "model": "Opus 5",
+      "idle_sec": 100.0
+    },
+    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m        💤 \u001b[38;5;249m▰▰▰\u001b[0m\u001b[38;5;249m▱▱\u001b[0m \u001b[38;5;249m1m\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m       \n\u001b[38;5;249mOpus 5\u001b[0m      "
+  },
+  {
+    "name": "bypass",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 15.0,
+        "projected": 23.0,
+        "cooldown": "4h32m"
+      },
+      "seven_day": {
+        "pct": 2.0,
+        "projected": 8.0,
+        "cooldown": "6d02h"
+      },
+      "model": "Opus 5",
+      "bypass": true,
+      "idle_sec": 30.0,
+      "cache_ttl": 3600
+    },
+    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m 23%\u001b[0m 💤 \u001b[38;5;249m▰▰▰▰▰\u001b[0m \u001b[38;5;249m30s/1h\u001b[0m \u001b[1m\u001b[31m[BYPASS]\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m  8%\u001b[0m\n\u001b[38;5;249mOpus 5\u001b[0m      "
+  },
+  {
+    "name": "model-mix",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 15.0,
+        "projected": 23.0,
+        "cooldown": "4h32m"
+      },
+      "seven_day": {
+        "pct": 2.0,
+        "projected": 8.0,
+        "cooldown": "6d02h"
+      },
+      "model": "Opus 5",
+      "ctx_pct": 42.0,
+      "ctx_size": 1000000,
+      "model_shares": {
+        "o": 0.62,
+        "s": 0.31,
+        "h": 0.07
+      },
+      "subagent_count": 3,
+      "subagent_share": 0.18
+    },
+    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m 23%\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m  8%\u001b[0m\n\u001b[38;5;249mOpus 5\u001b[0m      \u001b[38;5;78m▰▰▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱\u001b[0m \u001b[38;5;78m42%ctx\u001b[0m  \u001b[38;5;249m62%o\u001b[0m \u001b[33m31%s\u001b[0m \u001b[38;5;78m7%h\u001b[0m \u001b[38;5;249m🐝3 18%\u001b[0m"
+  },
+  {
+    "name": "unknown-family",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 15.0,
+        "cooldown": "4h32m"
+      },
+      "seven_day": {
+        "pct": 2.0,
+        "cooldown": "6d02h"
+      },
+      "model": "Opus 5",
+      "model_shares": {
+        "o": 0.52,
+        "?": 0.48
+      }
+    },
+    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m       \n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m       \n\u001b[38;5;249mOpus 5\u001b[0m      \u001b[38;5;249m52%o\u001b[0m \u001b[38;5;249m48%?\u001b[0m"
+  },
+  {
+    "name": "single-family-hidden",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 15.0,
+        "cooldown": "4h32m"
+      },
+      "seven_day": {
+        "pct": 2.0,
+        "cooldown": "6d02h"
+      },
+      "model": "Opus 5",
+      "model_shares": {
+        "o": 1.0
+      },
+      "subagent_count": 2
+    },
+    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m       \n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m       \n\u001b[38;5;249mOpus 5\u001b[0m      \u001b[38;5;249m🐝2\u001b[0m"
+  },
+  {
+    "name": "over-one-hundred",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 88.0,
+        "projected": 137.0,
+        "cooldown": "0h42m",
+        "time_to_100": "18m",
+        "confidence": "high",
+        "rate": 34.0
+      },
+      "seven_day": {
+        "pct": 61.0,
+        "projected": 104.0,
+        "cooldown": "2d11h",
+        "time_to_100": "1d02h",
+        "confidence": "medium",
+        "rate": 21.0
+      },
+      "model": "Opus 5",
+      "ctx_pct": 93.0,
+      "ctx_size": 1000000
+    },
+    "expected": "\u001b[38;5;249m🕑 0h42m/5h\u001b[0m \u001b[97m▰▰▰▰▰▰▰▰▰\u001b[0m\u001b[31m▰\u001b[0m\u001b[31m 88%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[1m\u001b[31m137%\u001b[0m \u001b[31m34%/h\u001b[0m \u001b[1m\u001b[31m⏰ 18m\u001b[0m\n\u001b[38;5;249m🗓️ 2d11h/7d\u001b[0m \u001b[97m▰▰▰▰▰▰\u001b[0m\u001b[31m▰▰▰▰\u001b[0m\u001b[33m 61%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[31m104%\u001b[0m \u001b[31m21%/d\u001b[0m \u001b[1m\u001b[31m⏰ 1d02h\u001b[0m\n\u001b[38;5;249mOpus 5\u001b[0m      \u001b[31m▰▰▰▰▰▰▰▰▰\u001b[0m\u001b[38;5;249m▱\u001b[0m \u001b[31m93%ctx\u001b[0m"
+  },
+  {
+    "name": "long-model-name",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 15.0,
+        "projected": 23.0,
+        "cooldown": "4h32m"
+      },
+      "seven_day": {
+        "pct": 2.0,
+        "projected": 8.0,
+        "cooldown": "6d02h"
+      },
+      "model": "Some Very Long Model Name v3 (1M context)",
+      "ctx_pct": 91.0,
+      "ctx_size": 1000000
+    },
+    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m 23%\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m  8%\u001b[0m\n\u001b[38;5;249mSome Very Long Model Name v3\u001b[0m \u001b[31m▰▰▰▰▰▰▰▰▰\u001b[0m\u001b[38;5;249m▱\u001b[0m \u001b[31m91%ctx\u001b[0m"
+  },
+  {
+    "name": "sparkline-partial-history",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 12.0,
+        "projected": 19.0,
+        "cooldown": "3h10m",
+        "samples": [
+          {
+            "at": 1757998800.0,
+            "pct": 9.0
+          },
+          {
+            "at": 1757999200.0,
+            "pct": 10.1
+          },
+          {
+            "at": 1757999600.0,
+            "pct": 11.2
+          },
+          {
+            "at": 1758000000.0,
+            "pct": 12.3
+          }
+        ],
+        "confidence": "low",
+        "rate": 6.0
+      },
+      "seven_day": {
+        "pct": 3.0,
+        "cooldown": "5d20h",
+        "samples": [
+          {
+            "at": 1757998800.0,
+            "pct": 9.0
+          },
+          {
+            "at": 1757999200.0,
+            "pct": 10.1
+          },
+          {
+            "at": 1757999600.0,
+            "pct": 11.2
+          },
+          {
+            "at": 1758000000.0,
+            "pct": 12.3
+          }
+        ]
+      },
+      "model": "Opus 5"
+    },
+    "expected": "\u001b[38;5;249m🕑 3h10m/5h\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;78m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 12%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[2m\u001b[38;5;78m 19%\u001b[0m \u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[31m▇\u001b[0m \u001b[38;5;78m6%/h\u001b[0m\n\u001b[38;5;249m🗓️ 5d20h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  3%\u001b[0m        \u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[31m▇\u001b[0m\n\u001b[38;5;249mOpus 5\u001b[0m      "
+  },
+  {
+    "name": "quiet-rates",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 4.0,
+        "projected": 5.0,
+        "cooldown": "4h02m",
+        "rate": 0.2
+      },
+      "seven_day": {
+        "pct": 1.0,
+        "projected": 2.0,
+        "cooldown": "6d12h",
+        "rate": 0.4
+      },
+      "model": "Haiku 4.5",
+      "ctx_pct": 8.0,
+      "ctx_size": 200000
+    },
+    "expected": "\u001b[38;5;249m🕑 4h02m/5h\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  4%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m  5%\u001b[0m \u001b[38;5;249m0.2%/h\u001b[0m\n\u001b[38;5;249m🗓️ 6d12h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  1%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m  2%\u001b[0m \u001b[38;5;249m0.4%/d\u001b[0m\n\u001b[38;5;249mHaiku 4.5\u001b[0m   \u001b[38;5;78m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m \u001b[38;5;78m8%ctx\u001b[0m"
+  },
+  {
+    "name": "zero-usage",
+    "ctx": {
+      "local_hour": 14,
+      "warning_pct": 40.0,
+      "critical_pct": 70.0
+    },
+    "view": {
+      "five_hour": {
+        "pct": 0.0,
+        "projected": 0.0,
+        "cooldown": "5h00m"
+      },
+      "seven_day": {
+        "pct": 0.0,
+        "projected": 0.0,
+        "cooldown": "7d00h"
+      },
+      "model": "Opus 5",
+      "ctx_pct": 0.0,
+      "ctx_size": 1000000
+    },
+    "expected": "\u001b[38;5;249m🕑 5h00m/5h\u001b[0m \u001b[38;5;249m▱▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  0%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m  0%\u001b[0m\n\u001b[38;5;249m🗓️ 7d00h/7d\u001b[0m \u001b[38;5;249m▱▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  0%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m  0%\u001b[0m\n\u001b[38;5;249mOpus 5\u001b[0m      \u001b[38;5;249m▱▱▱▱▱▱▱▱▱▱\u001b[0m \u001b[38;5;78m0%ctx\u001b[0m"
+  }
+]

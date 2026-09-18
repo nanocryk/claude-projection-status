@@ -1,0 +1,19 @@
+[package]
+name = "claude-projection-status"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.85"
+description = "Custom Claude Code status bar with usage projection"
+
+[lib]
+name = "claude_status"
+path = "src/lib.rs"
+
+[[bin]]
+name = "claude-status"
+path = "src/main.rs"
+
+[dependencies]
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

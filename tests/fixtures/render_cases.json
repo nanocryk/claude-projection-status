@@ -251,117 +251,6 @@
     "expected": "\u001b[38;5;249m🕑 2h04m/5h\u001b[0m \u001b[97m▰▰▰▰▰▰\u001b[0m\u001b[31m▰▰▰▰\u001b[0m\u001b[33m 62%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[1m\u001b[31m 96%\u001b[0m \u001b[38;5;238m▁\u001b[0m\u001b[38;5;252m▁\u001b[0m\u001b[33m▄\u001b[0m\u001b[31m▇\u001b[0m\u001b[33m▄\u001b[0m\u001b[31m▇\u001b[0m\u001b[33m▄\u001b[0m\u001b[31m▇\u001b[0m \u001b[33m22%/h\u001b[0m \u001b[1m\u001b[31m⏰ 2h30m\u001b[0m\n\u001b[38;5;249m🗓️ 1d06h/7d\u001b[0m \u001b[97m▰▰▰▰▰▰▰\u001b[0m\u001b[33m▰▰\u001b[0m\u001b[38;5;249m▱\u001b[0m\u001b[31m 74%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[1m\u001b[33m 91%\u001b[0m \u001b[38;5;238m▁\u001b[0m\u001b[38;5;238m▁\u001b[0m\u001b[33m▄\u001b[0m\u001b[33m▄\u001b[0m\u001b[33m▄\u001b[0m\u001b[33m▄\u001b[0m\u001b[33m▄\u001b[0m\u001b[31m▇\u001b[0m \u001b[33m12%/d\u001b[0m \u001b[1m\u001b[31m⏰ 1d04h\u001b[0m\n\u001b[38;5;249mOpus 5\u001b[0m      \u001b[33m▰▰▰▰▰▰▰\u001b[0m\u001b[38;5;249m▱▱▱\u001b[0m \u001b[33m66%ctx\u001b[0m"
   },
   {
-    "name": "idle-fresh-1h-ttl",
-    "ctx": {
-      "local_hour": 14,
-      "warning_pct": 40.0,
-      "critical_pct": 70.0
-    },
-    "view": {
-      "five_hour": {
-        "pct": 15.0,
-        "projected": 23.0,
-        "cooldown": "4h32m"
-      },
-      "seven_day": {
-        "pct": 2.0,
-        "projected": 8.0,
-        "cooldown": "6d02h"
-      },
-      "model": "Opus 5",
-      "idle_sec": 45.0,
-      "cache_ttl": 3600
-    },
-    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m 23%\u001b[0m 💤 \u001b[38;5;249m▰▰▰▰▰\u001b[0m \u001b[38;5;249m45s/1h\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m  8%\u001b[0m\n\u001b[38;5;249mOpus 5\u001b[0m      "
-  },
-  {
-    "name": "idle-yellow",
-    "ctx": {
-      "local_hour": 14,
-      "warning_pct": 40.0,
-      "critical_pct": 70.0
-    },
-    "view": {
-      "five_hour": {
-        "pct": 15.0,
-        "cooldown": "4h32m"
-      },
-      "seven_day": {
-        "pct": 2.0,
-        "cooldown": "6d02h"
-      },
-      "model": "Opus 5",
-      "idle_sec": 200.0,
-      "cache_ttl": 300
-    },
-    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m        💤 \u001b[33m▰▰\u001b[0m\u001b[38;5;249m▱▱▱\u001b[0m \u001b[33m3m/5m\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m       \n\u001b[38;5;249mOpus 5\u001b[0m      "
-  },
-  {
-    "name": "idle-red",
-    "ctx": {
-      "local_hour": 14,
-      "warning_pct": 40.0,
-      "critical_pct": 70.0
-    },
-    "view": {
-      "five_hour": {
-        "pct": 15.0,
-        "cooldown": "4h32m"
-      },
-      "seven_day": {
-        "pct": 2.0,
-        "cooldown": "6d02h"
-      },
-      "model": "Opus 5",
-      "idle_sec": 260.0,
-      "cache_ttl": 300
-    },
-    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m        💤 \u001b[31m▰\u001b[0m\u001b[38;5;249m▱▱▱▱\u001b[0m \u001b[31m4m/5m\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m       \n\u001b[38;5;249mOpus 5\u001b[0m      "
-  },
-  {
-    "name": "idle-cold-with-nudge",
-    "ctx": {
-      "local_hour": 14,
-      "warning_pct": 40.0,
-      "critical_pct": 70.0
-    },
-    "view": {
-      "five_hour": {
-        "pct": 15.0,
-        "cooldown": "4h32m"
-      },
-      "seven_day": {
-        "pct": 2.0,
-        "cooldown": "6d02h"
-      },
-      "model": "Opus 5",
-      "idle_sec": 5400.0,
-      "cache_ttl": 300
-    },
-    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m        🥶 \u001b[38;5;249m▱▱▱▱▱\u001b[0m \u001b[1m\u001b[38;5;45m1h30m/5m\u001b[0m 👋\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m       \n\u001b[38;5;249mOpus 5\u001b[0m      "
-  },
-  {
-    "name": "idle-unknown-ttl",
-    "ctx": {
-      "local_hour": 14,
-      "warning_pct": 40.0,
-      "critical_pct": 70.0
-    },
-    "view": {
-      "five_hour": {
-        "pct": 15.0,
-        "cooldown": "4h32m"
-      },
-      "seven_day": {
-        "pct": 2.0,
-        "cooldown": "6d02h"
-      },
-      "model": "Opus 5",
-      "idle_sec": 100.0
-    },
-    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m        💤 \u001b[38;5;249m▰▰▰\u001b[0m\u001b[38;5;249m▱▱\u001b[0m \u001b[38;5;249m1m\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m       \n\u001b[38;5;249mOpus 5\u001b[0m      "
-  },
-  {
     "name": "bypass",
     "ctx": {
       "local_hour": 14,
@@ -380,11 +269,9 @@
         "cooldown": "6d02h"
       },
       "model": "Opus 5",
-      "bypass": true,
-      "idle_sec": 30.0,
-      "cache_ttl": 3600
+      "bypass": true
     },
-    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m 23%\u001b[0m 💤 \u001b[38;5;249m▰▰▰▰▰\u001b[0m \u001b[38;5;249m30s/1h\u001b[0m \u001b[1m\u001b[31m[BYPASS]\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m  8%\u001b[0m\n\u001b[38;5;249mOpus 5\u001b[0m      "
+    "expected": "\u001b[38;5;249m🕑 4h32m/5h\u001b[0m \u001b[97m▰▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m 15%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m 23%\u001b[0m \u001b[1m\u001b[31m[BYPASS]\u001b[0m\n\u001b[38;5;249m🗓️ 6d02h/7d\u001b[0m \u001b[97m▰\u001b[0m\u001b[38;5;249m▱▱▱▱▱▱▱▱▱\u001b[0m\u001b[38;5;78m  2%\u001b[0m \u001b[38;5;249m⇒\u001b[0m \u001b[38;5;78m  8%\u001b[0m\n\u001b[38;5;249mOpus 5\u001b[0m      "
   },
   {
     "name": "model-mix",

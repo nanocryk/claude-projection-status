@@ -12,5 +12,6 @@ pub mod profile;
 pub mod render;
 pub mod slots;
 pub mod storage;
+pub mod transcript;
 pub mod units;
 pub mod window;

@@ -7,8 +7,11 @@ use crate::estimate::{self, Confidence};
 use crate::history;
 use crate::input::Payload;
 use crate::profile::Profile;
-use crate::render::{self, StatusView, WindowView};
+use std::path::Path;
+
+use crate::render::{self, IdleView, StatusView, WindowView};
 use crate::storage::{self, Store};
+use crate::transcript;
 use crate::units::{Pct, Timestamp};
 use crate::window::{Sample, WindowKind, WindowState};
 
@@ -36,6 +39,74 @@ impl Analysis {
             WindowKind::SevenDay => &self.seven_day,
         }
     }
+}
+
+/// What the session's transcript says about the model mix and the prompt cache.
+#[derive(Debug, Default)]
+pub struct SessionReport {
+    pub idle: Option<IdleView>,
+    pub mix: transcript::Mix,
+}
+
+/// Read the session transcript: which models spent the tokens, how long the
+/// prompt cache has been decaying, and how long it lives.
+///
+/// The transcript path, once resolved, is remembered against the session, so a
+/// later change of directory cannot lose the indicator. The cache lifetime
+/// falls back to this session's last measurement, then to the last one seen on
+/// this machine, rather than to an assumption.
+pub fn read_session(
+    store: &Store,
+    payload: &Payload,
+    projects_root: &Path,
+    now: Timestamp,
+) -> storage::Result<SessionReport> {
+    let session = payload.session_id();
+    if session.is_empty() {
+        return Ok(SessionReport::default());
+    }
+
+    let dirs = payload.candidate_dirs();
+    let candidates: Vec<&str> = dirs.iter().map(String::as_str).collect();
+    let path = transcript::locate(projects_root, session, &candidates)
+        .or(store.session_transcript(session)?)
+        .filter(|path| path.is_file());
+
+    let Some(path) = path else {
+        // Keep the indicator in place with nothing in it: a transcript that
+        // cannot be read must not look like a cache that was just written.
+        store.remember_session(session, None, None, now)?;
+        return Ok(SessionReport {
+            idle: Some(IdleView {
+                seconds: None,
+                cache_ttl: store.last_cache_ttl()?,
+                ttl_inherited: true,
+                live: false,
+            }),
+            mix: transcript::Mix::default(),
+        });
+    };
+
+    let tail = transcript::read_tail(&path);
+    store.remember_session(session, Some(&path), tail.cache_ttl, now)?;
+
+    let (cache_ttl, ttl_inherited) = match tail.cache_ttl {
+        Some(ttl) => (Some(ttl), false),
+        None => match store.session_cache_ttl(session)? {
+            Some(ttl) => (Some(ttl), false),
+            None => (store.last_cache_ttl()?, true),
+        },
+    };
+
+    Ok(SessionReport {
+        idle: Some(IdleView {
+            seconds: tail.idle_for(now),
+            cache_ttl,
+            ttl_inherited,
+            live: tail.is_live(now),
+        }),
+        mix: transcript::read_mix(&path, session),
+    })
 }
 
 /// Record this refresh, fold what has elapsed, and project both windows.
@@ -116,6 +187,7 @@ fn report_for<Tz: TimeZone>(
 pub fn build_view(
     payload: &Payload,
     analysis: &Analysis,
+    session: &SessionReport,
     now: Timestamp,
     bypass: bool,
 ) -> StatusView {
@@ -139,7 +211,10 @@ pub fn build_view(
             .and_then(|window| window.context_window_size)
             .unwrap_or(0),
         bypass,
-        ..StatusView::default()
+        model_shares: session.mix.shares.clone(),
+        subagent_count: session.mix.subagent_count,
+        subagent_share: session.mix.subagent_share,
+        idle: session.idle,
     }
 }
 

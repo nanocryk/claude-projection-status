@@ -22,6 +22,8 @@ pub const COLD: char = '🥶';
 pub const BEE: char = '🐝';
 /// Long-idle nudge.
 pub const WAVE: char = '👋';
+/// Something was written to the transcript moments ago.
+pub const LIVE: char = '•';
 
 /// Clock face for one o'clock; `+k` gives `(k + 1)` o'clock.
 const CLOCK_BASE: u32 = 0x1f550;

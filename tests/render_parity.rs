@@ -27,7 +27,7 @@ fn escaped(text: &str) -> String {
 #[test]
 fn every_case_renders_exactly_as_the_python_did() {
     let cases = cases();
-    assert!(cases.len() >= 18, "fixtures look truncated");
+    assert!(cases.len() >= 13, "fixtures look truncated");
     for case in &cases {
         let rendered = render_status_line(&case.view, &case.ctx);
         assert_eq!(

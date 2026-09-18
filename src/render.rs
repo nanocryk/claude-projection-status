@@ -11,6 +11,7 @@ use serde::Deserialize;
 use crate::color;
 use crate::estimate::Confidence;
 use crate::glyphs;
+use crate::transcript::FAMILY_ORDER;
 use crate::units::{Pct, Timestamp};
 use crate::window::{Sample, WindowKind};
 
@@ -58,8 +59,24 @@ pub struct StatusView {
     pub model_shares: BTreeMap<String, f64>,
     pub subagent_count: u32,
     pub subagent_share: f64,
-    pub idle_sec: Option<f64>,
+    /// Absent when there is no session to report on at all.
+    pub idle: Option<IdleView>,
+}
+
+/// Time since the prompt cache was last written, against the lifetime it was
+/// written with.
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[serde(default)]
+pub struct IdleView {
+    /// Absent when the session transcript could not be read: the block keeps
+    /// its place rather than disappearing, which would read as a warm cache.
+    pub seconds: Option<f64>,
     pub cache_ttl: Option<u32>,
+    /// The lifetime was carried over from an earlier session rather than
+    /// measured in this one.
+    pub ttl_inherited: bool,
+    /// Something was written to the transcript moments ago.
+    pub live: bool,
 }
 
 /// Values that come from the environment rather than from the payload.
@@ -400,10 +417,21 @@ fn format_window(
 /// Time since the conversation last yielded to the user, against the prompt
 /// cache TTL: the bar drains as the cache decays, and the tag names the TTL
 /// the client is using.
-fn format_idle(idle_sec: Option<f64>, cache_ttl: Option<u32>) -> String {
-    let Some(idle_sec) = idle_sec else {
-        return String::new();
+fn format_idle(idle: &IdleView) -> String {
+    let Some(idle_sec) = idle.seconds else {
+        // Nothing to anchor on. The block holds its place with an empty bar,
+        // so an unreadable transcript cannot be mistaken for a warm cache.
+        return format!(
+            "{} {}{}{} {} --{}",
+            glyphs::IDLE,
+            color::DIM,
+            glyphs::EMPTY.to_string().repeat(IDLE_BAR_WIDTH),
+            color::RESET,
+            color::DIM,
+            color::RESET
+        );
     };
+    let cache_ttl = idle.cache_ttl;
     let total = idle_sec.max(0.0) as u64;
     let time_str = if total >= 3600 {
         format!("{}h{:02}m", total / 3600, (total % 3600) / 60)
@@ -463,10 +491,20 @@ fn format_idle(idle_sec: Option<f64>, cache_ttl: Option<u32>) -> String {
     } else {
         String::new()
     };
-    format!(
-        "{glyph} {bar} {bold}{tint}{time_str}{ttl_tag}{}{nudge}",
-        color::RESET
-    )
+    // A lifetime carried over from another session is dimmed, so a measured
+    // one is distinguishable at a glance.
+    let tag = if idle.ttl_inherited && !ttl_tag.is_empty() {
+        format!("{}{}{ttl_tag}{}", color::RESET, color::DIM, color::RESET)
+    } else {
+        format!("{ttl_tag}{}", color::RESET)
+    };
+    // Derived from the newest record's age, so it cannot stay stuck on.
+    let live = if idle.live {
+        format!(" {}{}{}", color::DIM, glyphs::LIVE, color::RESET)
+    } else {
+        String::new()
+    };
+    format!("{glyph} {bar} {bold}{tint}{time_str}{tag}{live}{nudge}")
 }
 
 fn build_ctx_bar(ctx_pct: f64) -> String {
@@ -507,14 +545,11 @@ fn ctx_color(ctx_pct: f64) -> &'static str {
     }
 }
 
-/// Render order for known families; unknown ones follow, alphabetically.
-const FAMILY_ORDER: [&str; 3] = ["o", "s", "h"];
-
 fn family_color(family: &str) -> &'static str {
     match family {
-        "o" => color::DIM,
         "s" => color::YELLOW,
         "h" => color::GREEN,
+        "f" => color::COLD_BLUE,
         _ => color::DIM,
     }
 }
@@ -640,11 +675,6 @@ pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
     let prefix_width = visible_len(&prefix_5h).max(visible_len(&prefix_7d));
 
     let mut line1 = format_window(WindowKind::FiveHour, &view.five_hour, ctx, prefix_width);
-    let idle = format_idle(view.idle_sec, view.cache_ttl);
-    if !idle.is_empty() {
-        line1.push(' ');
-        line1.push_str(&idle);
-    }
     if view.bypass {
         let _ = write!(
             line1,
@@ -675,6 +705,11 @@ pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
             color::RESET
         ));
     }
+    // Cache decay belongs with the conversation's state rather than with the
+    // rate limits, and line 1 is the one that overflows a narrow terminal.
+    if let Some(idle) = view.idle.as_ref() {
+        line3_parts.push(format_idle(idle));
+    }
     let model_stats =
         format_model_stats(&view.model_shares, view.subagent_count, view.subagent_share);
     if !model_stats.is_empty() {
@@ -688,9 +723,9 @@ pub fn render_status_line(view: &StatusView, ctx: &RenderCtx) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        Confidence, RenderCtx, StatusView, WindowView, build_sparkline, build_two_tone_bar,
-        display_width, format_cooldown, format_window, render_status_line, strip_context_note,
-        visible_len,
+        Confidence, IdleView, RenderCtx, StatusView, WindowView, build_sparkline,
+        build_two_tone_bar, display_width, format_cooldown, format_window, render_status_line,
+        strip_context_note, visible_len,
     };
     use crate::units::{Pct, Timestamp};
     use crate::window::{Sample, WindowKind};
@@ -856,6 +891,105 @@ mod tests {
         let rendered = render_status_line(&view, &RenderCtx::default());
         let columns: Vec<usize> = rendered.lines().map(bar_column).collect();
         assert_eq!(columns, vec![columns[0]; 3], "{rendered}");
+    }
+
+    /// The idle indicator's line, with colour stripped.
+    fn idle_line(idle: IdleView) -> String {
+        let view = StatusView {
+            five_hour: WindowView {
+                pct: Some(Pct::new(15.0)),
+                cooldown: "4h32m".to_string(),
+                ..WindowView::default()
+            },
+            seven_day: WindowView {
+                pct: Some(Pct::new(2.0)),
+                cooldown: "6d02h".to_string(),
+                ..WindowView::default()
+            },
+            model: "Opus 5".to_string(),
+            ctx_pct: Some(42.0),
+            ctx_size: 1_000_000,
+            idle: Some(idle),
+            ..StatusView::default()
+        };
+        let rendered = render_status_line(&view, &RenderCtx::default());
+        strip_ansi(rendered.lines().nth(2).expect("a third line"))
+    }
+
+    #[test]
+    fn the_idle_indicator_sits_after_the_context_bar() {
+        let line = idle_line(IdleView {
+            seconds: Some(45.0),
+            cache_ttl: Some(3600),
+            ttl_inherited: false,
+            live: false,
+        });
+        assert_eq!(line, "Opus 5      ▰▰▰▰▱▱▱▱▱▱ 42%ctx  💤 ▰▰▰▰▰ 45s/1h");
+    }
+
+    #[test]
+    fn the_idle_bar_drains_as_the_cache_decays() {
+        let drained = idle_line(IdleView {
+            seconds: Some(200.0),
+            cache_ttl: Some(300),
+            ..IdleView::default()
+        });
+        assert_eq!(drained, "Opus 5      ▰▰▰▰▱▱▱▱▱▱ 42%ctx  💤 ▰▰▱▱▱ 3m/5m");
+
+        let cold = idle_line(IdleView {
+            seconds: Some(5400.0),
+            cache_ttl: Some(300),
+            ..IdleView::default()
+        });
+        assert_eq!(cold, "Opus 5      ▰▰▰▰▱▱▱▱▱▱ 42%ctx  🥶 ▱▱▱▱▱ 1h30m/5m 👋");
+    }
+
+    #[test]
+    fn a_live_turn_adds_a_marker_beside_the_timer() {
+        let line = idle_line(IdleView {
+            seconds: Some(4.0),
+            cache_ttl: Some(3600),
+            ttl_inherited: false,
+            live: true,
+        });
+        assert_eq!(line, "Opus 5      ▰▰▰▰▱▱▱▱▱▱ 42%ctx  💤 ▰▰▰▰▰ 04s/1h •");
+    }
+
+    #[test]
+    fn an_unknown_anchor_keeps_the_block_with_a_placeholder() {
+        let line = idle_line(IdleView {
+            seconds: None,
+            cache_ttl: Some(3600),
+            ttl_inherited: true,
+            live: false,
+        });
+        assert_eq!(line, "Opus 5      ▰▰▰▰▱▱▱▱▱▱ 42%ctx  💤 ▱▱▱▱▱  --");
+    }
+
+    #[test]
+    fn an_inherited_lifetime_is_dimmed_rather_than_hidden() {
+        let inherited = IdleView {
+            seconds: Some(45.0),
+            cache_ttl: Some(3600),
+            ttl_inherited: true,
+            live: false,
+        };
+        let measured = IdleView {
+            ttl_inherited: false,
+            ..inherited
+        };
+        // Same text either way: only the colour of the tag differs.
+        assert_eq!(idle_line(inherited), idle_line(measured));
+        let view = StatusView {
+            model: "Opus 5".to_string(),
+            idle: Some(inherited),
+            ..StatusView::default()
+        };
+        let rendered = render_status_line(&view, &RenderCtx::default());
+        assert!(
+            rendered.contains(&format!("{}{}/1h", crate::color::RESET, crate::color::DIM)),
+            "the inherited tag should carry its own dim colour"
+        );
     }
 
     /// Terminal column where a line's first bar segment starts.

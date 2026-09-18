@@ -5,7 +5,7 @@
 
 use std::collections::BTreeMap;
 use std::fmt;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use rusqlite::{Connection, OptionalExtension as _, params};
@@ -55,6 +55,14 @@ CREATE TABLE IF NOT EXISTS priors (
     lambda REAL NOT NULL,
     weight REAL NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS sessions (
+    session TEXT PRIMARY KEY,
+    transcript TEXT,
+    cache_ttl REAL,
+    seen_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_sessions_seen ON sessions(seen_at);
 
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
@@ -410,6 +418,73 @@ impl Store {
             params![kind.label(), prior.lambda, prior.weight],
         )?;
         Ok(())
+    }
+
+    /// Keep what was learned about a session. Passing `None` for a field
+    /// leaves whatever is already stored, so a later run that cannot resolve
+    /// the transcript or read a cache write does not forget an earlier one.
+    pub fn remember_session(
+        &self,
+        session: &str,
+        transcript: Option<&Path>,
+        cache_ttl: Option<u32>,
+        now: Timestamp,
+    ) -> Result<()> {
+        if session.is_empty() {
+            return Ok(());
+        }
+        let path = transcript.map(|path| path.to_string_lossy().into_owned());
+        self.conn.execute(
+            "INSERT INTO sessions (session, transcript, cache_ttl, seen_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(session) DO UPDATE SET
+                transcript = COALESCE(excluded.transcript, sessions.transcript),
+                cache_ttl = COALESCE(excluded.cache_ttl, sessions.cache_ttl),
+                seen_at = excluded.seen_at",
+            params![session, path, cache_ttl.map(f64::from), now.get()],
+        )?;
+        Ok(())
+    }
+
+    pub fn session_transcript(&self, session: &str) -> Result<Option<PathBuf>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT transcript FROM sessions WHERE session = ?1",
+                params![session],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .optional()?
+            .flatten()
+            .map(PathBuf::from))
+    }
+
+    pub fn session_cache_ttl(&self, session: &str) -> Result<Option<u32>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT cache_ttl FROM sessions WHERE session = ?1",
+                params![session],
+                |row| row.get::<_, Option<f64>>(0),
+            )
+            .optional()?
+            .flatten()
+            .map(|ttl| ttl as u32))
+    }
+
+    /// The most recently measured cache lifetime on this machine, whichever
+    /// session measured it.
+    pub fn last_cache_ttl(&self) -> Result<Option<u32>> {
+        Ok(self
+            .conn
+            .query_row(
+                "SELECT cache_ttl FROM sessions WHERE cache_ttl IS NOT NULL
+                 ORDER BY seen_at DESC LIMIT 1",
+                [],
+                |row| row.get::<_, f64>(0),
+            )
+            .optional()?
+            .map(|ttl| ttl as u32))
     }
 
     pub fn summary(&self) -> Result<Summary> {

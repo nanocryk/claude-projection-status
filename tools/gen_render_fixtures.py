@@ -2,7 +2,12 @@
 
 Writes ``tests/fixtures/render_cases.json``: one case per layout situation,
 each holding the view the Rust renderer is given and the line the Python
-renderer produced for it. Run from the repository root:
+renderer produced for it.
+
+The idle indicator is deliberately not covered here: it moved from line 1 to
+line 3, so the two implementations no longer agree about it on purpose. Its
+layout is asserted directly in the Rust renderer's own tests. Run from the
+repository root:
 
     python tools/gen_render_fixtures.py
 
@@ -106,63 +111,12 @@ CASES: list[dict] = [
         },
     },
     {
-        "name": "idle-fresh-1h-ttl",
-        "view": {
-            "five_hour": {"pct": 15.0, "projected": 23.0, "cooldown": "4h32m"},
-            "seven_day": {"pct": 2.0, "projected": 8.0, "cooldown": "6d02h"},
-            "model": "Opus 5",
-            "idle_sec": 45.0,
-            "cache_ttl": 3600,
-        },
-    },
-    {
-        "name": "idle-yellow",
-        "view": {
-            "five_hour": {"pct": 15.0, "cooldown": "4h32m"},
-            "seven_day": {"pct": 2.0, "cooldown": "6d02h"},
-            "model": "Opus 5",
-            "idle_sec": 200.0,
-            "cache_ttl": 300,
-        },
-    },
-    {
-        "name": "idle-red",
-        "view": {
-            "five_hour": {"pct": 15.0, "cooldown": "4h32m"},
-            "seven_day": {"pct": 2.0, "cooldown": "6d02h"},
-            "model": "Opus 5",
-            "idle_sec": 260.0,
-            "cache_ttl": 300,
-        },
-    },
-    {
-        "name": "idle-cold-with-nudge",
-        "view": {
-            "five_hour": {"pct": 15.0, "cooldown": "4h32m"},
-            "seven_day": {"pct": 2.0, "cooldown": "6d02h"},
-            "model": "Opus 5",
-            "idle_sec": 5400.0,
-            "cache_ttl": 300,
-        },
-    },
-    {
-        "name": "idle-unknown-ttl",
-        "view": {
-            "five_hour": {"pct": 15.0, "cooldown": "4h32m"},
-            "seven_day": {"pct": 2.0, "cooldown": "6d02h"},
-            "model": "Opus 5",
-            "idle_sec": 100.0,
-        },
-    },
-    {
         "name": "bypass",
         "view": {
             "five_hour": {"pct": 15.0, "projected": 23.0, "cooldown": "4h32m"},
             "seven_day": {"pct": 2.0, "projected": 8.0, "cooldown": "6d02h"},
             "model": "Opus 5",
             "bypass": True,
-            "idle_sec": 30.0,
-            "cache_ttl": 3600,
         },
     },
     {

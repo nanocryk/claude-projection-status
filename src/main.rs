@@ -5,7 +5,7 @@ use std::process::ExitCode;
 
 use chrono::{DateTime, Local, TimeZone, Timelike as _};
 
-use claude_status::app::{self, Analysis};
+use claude_status::app::{self, Analysis, SessionReport};
 use claude_status::config::{self, Config};
 use claude_status::input::Payload;
 use claude_status::render::{self, RenderCtx};
@@ -36,14 +36,14 @@ fn print_status_line() {
     let now = now();
 
     // A storage failure costs the projections, never the status line.
-    let analysis = analyse(&config, &payload, now).unwrap_or_else(|error| {
+    let (analysis, session) = analyse(&config, &payload, now).unwrap_or_else(|error| {
         if config.debug {
             eprintln!("claude-status: {error}");
         }
-        Analysis::default()
+        (Analysis::default(), SessionReport::default())
     });
 
-    let view = app::build_view(&payload, &analysis, now, config::bypass_enabled());
+    let view = app::build_view(&payload, &analysis, &session, now, config::bypass_enabled());
     let ctx = RenderCtx {
         local_hour: Local::now().hour(),
         warning_pct: config.warning_pct,
@@ -56,9 +56,15 @@ fn analyse(
     config: &Config,
     payload: &Payload,
     now: Timestamp,
-) -> claude_status::storage::Result<Analysis> {
+) -> claude_status::storage::Result<(Analysis, SessionReport)> {
     let store = Store::open(&config.db_path(), now)?;
-    app::analyse(&store, payload, config.retention_days, now, &Local)
+    let analysis = app::analyse(&store, payload, config.retention_days, now, &Local)?;
+    let session = if config.show_model_mix {
+        app::read_session(&store, payload, &config.projects_root, now)?
+    } else {
+        SessionReport::default()
+    };
+    Ok((analysis, session))
 }
 
 fn read_stdin() -> String {

@@ -85,6 +85,24 @@ impl Payload {
             .unwrap_or_else(|| "Unknown".to_string())
     }
 
+    /// Directories the session's transcript might be filed under, best first.
+    ///
+    /// Claude Code files a session under the directory it started in, which is
+    /// not always the one it is running in now.
+    pub fn candidate_dirs(&self) -> Vec<String> {
+        let mut dirs = Vec::new();
+        if let Some(workspace) = self.workspace.as_ref() {
+            dirs.extend(workspace.current_dir.clone());
+            dirs.extend(workspace.project_dir.clone());
+        }
+        dirs.extend(self.cwd.clone());
+        dirs.retain(|dir| !dir.is_empty());
+        if dirs.is_empty() {
+            dirs.push(self.cwd());
+        }
+        dirs
+    }
+
     /// Directory the session runs in, used to locate its transcript.
     pub fn cwd(&self) -> String {
         let from_workspace = self.workspace.as_ref().and_then(|workspace| {

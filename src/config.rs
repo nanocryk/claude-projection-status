@@ -14,6 +14,8 @@ pub struct Config {
     /// Read session transcripts for the model mix and idle indicators.
     pub show_model_mix: bool,
     pub cache_dir: PathBuf,
+    /// Where Claude Code files session transcripts.
+    pub projects_root: PathBuf,
     /// Days of raw samples to keep.
     pub retention_days: u32,
     pub debug: bool,
@@ -26,6 +28,7 @@ impl Default for Config {
             critical_pct: 70.0,
             show_model_mix: true,
             cache_dir: default_cache_dir(),
+            projects_root: default_projects_root(),
             retention_days: 14,
             debug: false,
         }
@@ -46,6 +49,9 @@ impl Config {
             cache_dir: setting(&file, "cache_dir", "CLAUDE_STATUS_CACHE")
                 .map(PathBuf::from)
                 .unwrap_or(defaults.cache_dir),
+            projects_root: setting(&file, "projects_root", "CLAUDE_STATUS_PROJECTS")
+                .map(PathBuf::from)
+                .unwrap_or(defaults.projects_root),
             retention_days: number(&file, "retention_days", "CLAUDE_STATUS_RETENTION")
                 .map(|days| days as u32)
                 .unwrap_or(defaults.retention_days),
@@ -68,6 +74,11 @@ pub fn home_dir() -> Option<PathBuf> {
 fn default_cache_dir() -> PathBuf {
     let base = home_dir().unwrap_or_else(|| PathBuf::from("."));
     base.join(".cache").join("claude-projection-status")
+}
+
+fn default_projects_root() -> PathBuf {
+    let base = home_dir().unwrap_or_else(|| PathBuf::from("."));
+    base.join(".claude").join("projects")
 }
 
 fn config_path() -> PathBuf {
